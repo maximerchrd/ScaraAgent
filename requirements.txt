@@ -1,0 +1,22 @@
+# requirements.txt
+# SCARA Agent — all dependencies
+
+# ---------- GUI ----------
+customtkinter>=5.2.0        # Modern Tkinter widgets
+# tkinter is included with Python (no pip install needed)
+
+# ---------- Robot / Serial ----------
+pyserial>=3.5               # Serial communication with Arduino/GRBL
+
+# ---------- Vision ----------
+opencv-python>=4.8.0        # Camera capture, ArUco detection, image processing
+opencv-contrib-python>=4.8.0 # Extra OpenCV modules (ArUco dictionary)
+numpy>=1.24.0               # Array operations for images and kinematics
+
+# ---------- Agent / AI ----------
+google-generativeai>=0.3.0  # Gemini Robotics ER API
+Pillow>=10.0.0              # Image handling for Gemini (convert numpy → PIL)
+requests>=2.31.0            # HTTP requests (used by LLM and optionally by Gemini)
+
+# ---------- Optional but recommended ----------
+python-dotenv>=1.0.0        # Load API keys from .env file

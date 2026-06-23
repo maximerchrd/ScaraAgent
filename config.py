@@ -1,0 +1,101 @@
+# config.py
+"""
+Central configuration for the SCARA agent.
+All tunable parameters live here; environment variables or a .env file should supply secrets.
+"""
+
+import os
+from dataclasses import dataclass, field
+from typing import Dict, Any
+from pathlib import Path
+
+# Load .env from the project root (next to main.py, config.py)
+try:
+    from dotenv import load_dotenv, find_dotenv
+    # find_dotenv searches upward from this file's location
+    env_path = find_dotenv(usecwd=False)
+    if env_path:
+        load_dotenv(env_path)
+    else:
+        # fallback: explicit path relative to config.py
+        project_root = Path(__file__).parent
+        dotenv_file = project_root / ".env"
+        if dotenv_file.exists():
+            load_dotenv(dotenv_file)
+except ImportError:
+    pass
+
+@dataclass
+class RobotConfig:
+    # Serial
+    serial_port: str = "/dev/ttyUSB0"
+    baudrate: int = 115200
+    serial_timeout: float = 0.05
+
+    # Kinematics (mm & steps)
+    link1_length: float = 200.0       # L1
+    link2_length: float = 150.0       # L2
+    steps_per_deg_j1: float = 11.3778
+    steps_per_deg_j2: float = 11.3778
+    z_steps_per_mm: float = 40.0      # adjust to your leadscrew
+
+    # Default joint limits
+    j1_min: float = -150.0
+    j1_max: float = 150.0
+    j2_min: float = -150.0
+    j2_max: float = 150.0
+    z_min: float = -50.0
+    z_max: float = 50.0
+
+    # Jog defaults
+    jog_step_linear: int = 50         # steps for Z, J1, J2 discrete jog
+    jog_step_yaw: int = 5             # degrees for wrist yaw
+    max_speed: int = 2000
+    default_speed: int = 1000
+
+    # Gripper timings (ms)
+    gripper_open_duration: int = 1500
+    gripper_close_duration: int = 800
+
+@dataclass
+class VisionConfig:
+    camera_index: Any = "http://10.210.236.252:8080/video"
+    frame_width: int = 1280
+    frame_height: int = 720
+    fps: int = 30
+
+    # ArUco
+    aruco_dict_name: str = "DICT_4X4_50"
+    marker_size_mm: float = 50.0      # side length of physical marker
+    camera_matrix: Any = None         # fill with your calibration
+    dist_coeffs: Any = None
+
+@dataclass
+class LLMConfig:
+    # Gemini VLM models
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    gemini_model: str = "gemini-3.1-flash-lite"
+
+    # Groq (ChatGPT-OSS 120B)
+    chatgpt_endpoint: str = "https://api.groq.com/openai/v1/chat/completions"
+    chatgpt_model: str = "openai/gpt-oss-120b"
+    chatgpt_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
+
+    # Timeout for API calls (seconds)
+    request_timeout: float = 15.0
+
+@dataclass
+class Config:
+    robot: RobotConfig = field(default_factory=RobotConfig)
+    vision: VisionConfig = field(default_factory=VisionConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    
+    # File paths
+    measurements_csv: str = "measurements.csv"
+    log_file: str = "scara_agent.log"
+
+    # Agent behaviour
+    agent_loop_delay: float = 0.5     # seconds between action checks
+
+# Create a singleton instance for easy import
+config = Config()
