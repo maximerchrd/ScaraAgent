@@ -77,6 +77,7 @@ class ScaraAgentApp(ctk.CTk):
 
         self.arm_canvas = ArmCanvas(right_frame, width=240, height=240, bg=DARK_BG)
         self.arm_canvas.grid(row=0, column=0, pady=(0, 10))
+        self.arm_canvas.update_joints(0, 0)
 
         self.camera_panel = CameraPanel(
             right_frame,
@@ -228,6 +229,13 @@ class ScaraAgentApp(ctk.CTk):
         steps_j1 = int(data[1])
         steps_j2 = int(data[2])
         self.current_yaw = int(data[3]) if len(data) > 3 else 90
+
+        # ✅ Keep robot controller's cache in sync
+        if self.robot:
+            self.robot._last_z = steps_z
+            self.robot._last_j1 = steps_j1
+            self.robot._last_j2 = steps_j2
+            self.robot._last_yaw = self.current_yaw
 
         # Update status panel labels (relative steps)
         self.status_panel.update_positions(steps_z, steps_j1, steps_j2, self.current_yaw)

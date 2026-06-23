@@ -40,7 +40,6 @@ class RobotController:
     # ---------- Connection helpers ----------
     def connect(self, port):
         self.serial_comm.connect(port)
-        self._start_polling()
 
     def disconnect(self):
         self._stop_polling()

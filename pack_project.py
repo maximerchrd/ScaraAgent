@@ -19,13 +19,13 @@ PROJECT_DESCRIPTION = """
 #
 # Current state:
 #   - Manual jog control (joints + Cartesian XYZ)
-#   - Live position feedback, endswitch monitoring, homing, emergency stop
+#   - Live position feedback: endswitch monitoring, homing, emergency stop
 #   - Gripper control (open/close with timed stops)
 #   - Top-down arm visualization on canvas
 #   - Serial communication via pyserial
+#   - Webcam feed with ArUco marker detection (vision/camera.py, vision/aruco_detector.py)
 #
 # Goal / work-in-progress:
-#   - Add webcam feed with ArUco marker detection (vision/camera.py, vision/aruco_detector.py)
 #   - Integrate Gemini Robotics ER (VLM) to describe the scene
 #   - Integrate ChatGPT-OSS 120B (LLM) to reason about the scene and produce action plans
 #   - Orchestrator agent converts LLM plans into robot G-code commands
