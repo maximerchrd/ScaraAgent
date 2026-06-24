@@ -14,33 +14,36 @@ OUTPUT_FILE = "project_dump.txt"
 PROJECT_DESCRIPTION = """
 # SCARA Agent — Project Overview
 #
-# This is a 5-DOF SCARA robot control application evolving into an agentic system.
-# The robot uses G-code over serial, with a Python GUI (customtkinter).
+# This is a 5‑DOF SCARA robot control application evolving into an agentic system.
+# The robot uses G‑code over serial, with a Python GUI (customtkinter).
 #
 # Current state:
 #   - Manual jog control (joints + Cartesian XYZ)
 #   - Live position feedback: endswitch monitoring, homing, emergency stop
 #   - Gripper control (open/close with timed stops)
-#   - Top-down arm visualization on canvas
-#   - Serial communication via pyserial
+#   - Top‑down arm visualization on canvas (default pose drawn at startup)
+#   - Serial communication via pyserial (queue‑based, non‑starving)
 #   - Webcam feed with ArUco marker detection (vision/camera.py, vision/aruco_detector.py)
+#   - Marker‑based object localisation: taught marker positions stored in config.py,
+#     localiser maps pixel coordinates to real‑world robot coordinates (vision/localization.py)
+#   - Zeroing: set work coordinate origin on a reference marker after homing
 #
-# Goal / work-in-progress:
+# Goal / work‑in‑progress:
 #   - Integrate Gemini Robotics ER (VLM) to describe the scene
-#   - Integrate ChatGPT-OSS 120B (LLM) to reason about the scene and produce action plans
-#   - Orchestrator agent converts LLM plans into robot G-code commands
+#   - Integrate ChatGPT‑OSS 120B (LLM) to reason about the scene and produce action plans
+#   - Orchestrator agent converts LLM plans into robot G‑code commands
 #   - GUI panels for camera view and agent prompt/response
 #
 # Architecture:
 #   - gui/        — all UI panels and widgets
-#   - robot/      — kinematics, serial comm, high-level controller, calibration
-#   - vision/     — camera thread, ArUco detection, image utilities
+#   - robot/      — kinematics, serial comm, high‑level controller, calibration
+#   - vision/     — camera thread, ArUco detection, image utilities, marker localisation
 #   - agent/      — Gemini VLM interface, LLM interface, orchestrator, prompt templates
-#   - utils/      — thread-safe queue, logging setup
-#   - config.py   — all tunable parameters in dataclasses
+#   - utils/      — thread‑safe queue, logging setup
+#   - config.py   — all tunable parameters in dataclasses (including marker positions)
 #   - main.py     — entry point, wires everything together
 #
-# The system uses a SafeQueue for inter-thread communication.
+# The system uses a SafeQueue for inter‑thread communication.
 # The GUI runs in the main thread; robot serial, camera, and agent each run in daemon threads.
 """
 

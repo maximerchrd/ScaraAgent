@@ -43,13 +43,14 @@ class ScaraAgentApp(ctk.CTk):
         # Internal state
         self.last_steps = None   # (z_steps, j1_steps, j2_steps)
 
-                # ---------- Layout ----------
+        # ---------- Layout ----------
         # Three columns: left (jog), center (status), right (arm + camera)
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=0)
         self.grid_columnconfigure(2, weight=1)         # right side expands
         self.grid_rowconfigure(0, weight=0)             # connection bar
         self.grid_rowconfigure(1, weight=1)             # main content fills rest
+        self.grid_rowconfigure(2, weight=0)      # agent panel
 
         # --- Top: Connection ---
         self.conn_panel = ConnectionPanel(self, robot)
@@ -89,7 +90,13 @@ class ScaraAgentApp(ctk.CTk):
         self.camera_panel.grid(row=1, column=0, sticky="nsew")
 
         # --- Agent ---
-        
+        if AgentPanel:
+            self.agent_panel = AgentPanel(
+                self,
+                orchestrator=self.orchestrator,
+                queue=self.queue
+            )
+            self.agent_panel.grid(row=2, column=0, columnspan=3, padx=20, pady=(0,10), sticky="ew")
 
         # --- Keyboard bindings ---
         self.bind_keyboard()

@@ -12,6 +12,8 @@ import logging
 from agent.gemini_er import GeminiER
 from agent.llm import ChatGPTOSS
 from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT
+from vision.localization import MarkerLocalizer
+from vision.aruco_detector import detect_aruco
 
 class AgentOrchestrator:
     def __init__(self, robot, camera, queue, gemini_api_key=None, chatgpt_endpoint=None):
@@ -64,8 +66,40 @@ class AgentOrchestrator:
                 self.queue.put({"type": "agent_error", "data": "No camera frame"})
                 return
 
+            markers = detect_aruco(frame)
+            localizer = MarkerLocalizer()
+
+            # Build a dict of detected markers: id -> corners
+            detected_markers = {m["id"]: m["corners"] for m in markers}
+
+            # Ask Gemini for object pixel locations
+            objects = self.gemini.localize_objects(frame)  # new method
+
+            # Convert pixel coords to world coords
+            located_objects = []
+            for obj in objects:
+                marker_id = obj.get("marker_id")
+                if marker_id is not None and marker_id in detected_markers:
+                    pos = localizer.get_object_xy(
+                        marker_id,
+                        detected_markers[marker_id],
+                        (obj["pixel_x"], obj["pixel_y"])
+                    )
+                    if pos:
+                        located_objects.append({
+                            "label": obj["label"],
+                            "x_mm": round(pos[0], 1),
+                            "y_mm": round(pos[1], 1),
+                            "marker_id": marker_id
+                        })
+                else:
+                    # No marker nearby – skip or use a fallback
+                    logging.warning(f"No marker for object {obj['label']}")
+
+            # Build a rich scene description for the LLM
+            scene_desc = f"Objects detected: {json.dumps(located_objects)}\n"
+
             # 2. Get scene understanding from Gemini ER
-            scene_desc = self.gemini.describe_scene(frame)
             logging.info(f"Scene description: {scene_desc}")
 
             # 3. Build LLM messages

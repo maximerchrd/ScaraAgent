@@ -89,6 +89,7 @@ def main():
                 gemini_api_key=config.llm.gemini_api_key,
                 chatgpt_endpoint=config.llm.chatgpt_endpoint
             )
+            orchestrator.start()
             logger.info("Agent orchestrator ready.")
         except Exception as e:
             logger.error(f"Could not initialise orchestrator: {e}")

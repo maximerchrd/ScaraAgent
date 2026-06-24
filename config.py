@@ -59,7 +59,7 @@ class RobotConfig:
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = "http://10.210.236.252:8080/video"
+    camera_index: Any = 0#"http://10.210.236.252:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30
@@ -69,6 +69,13 @@ class VisionConfig:
     marker_size_mm: float = 50.0      # side length of physical marker
     camera_matrix: Any = None         # fill with your calibration
     dist_coeffs: Any = None
+
+    marker_positions: dict = field(default_factory=lambda: {
+        0: {"x": 0.0, "y": 0.0, "z": 0.0},    # corner 0 of marker 0 (master zero point)
+        1: {"x": 200.0, "y": 150.0, "z": 0.0}, # corner 0 of marker 1
+        2: {"x": -100.0, "y": 300.0, "z": 0.0},
+        3: {"x": 150.0, "y": -200.0, "z": 0.0}
+    })
 
 @dataclass
 class LLMConfig:

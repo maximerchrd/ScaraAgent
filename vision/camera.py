@@ -55,7 +55,7 @@ class CameraThread:
                 with self._lock:
                     self._latest_frame = frame
                 # Push frame to queue (GUI and agent can read it)
-                self.queue.put({"type": "camera_frame", "data": frame.copy()})
+                #self.queue.put({"type": "camera_frame", "data": frame.copy()})
             else:
                 time.sleep(0.01)
         cap.release()
