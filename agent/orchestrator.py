@@ -8,6 +8,7 @@ import threading
 import time
 import json
 import logging
+import numpy as np
 
 from agent.gemini_er import GeminiER
 from agent.llm import ChatGPTOSS
@@ -15,11 +16,13 @@ from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSIST
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
 
+
 class AgentOrchestrator:
-    def __init__(self, robot, camera, queue, gemini_api_key=None, chatgpt_endpoint=None):
+    def __init__(self, robot, camera, queue, agent_queue, gemini_api_key=None, chatgpt_endpoint=None):
         self.robot = robot
         self.camera = camera
         self.queue = queue
+        self.agent_queue = agent_queue
         self.gemini = GeminiER(api_key=gemini_api_key)
         self.llm = ChatGPTOSS(endpoint=chatgpt_endpoint)
 
@@ -42,9 +45,8 @@ class AgentOrchestrator:
     def _run_loop(self):
         """Listen for user prompts from the queue."""
         while self.running:
-            # Non‑blocking check for a prompt
-            if not self.queue.empty():
-                msg = self.queue.get_nowait()
+            if not self.agent_queue.empty():
+                msg = self.agent_queue.get_nowait()
                 if msg.get("type") == "agent_prompt":
                     user_prompt = msg["data"]
                     self._process_task(user_prompt)
@@ -52,7 +54,7 @@ class AgentOrchestrator:
 
     def submit_task(self, user_prompt):
         """External method to enqueue a new prompt (called from GUI)."""
-        self.queue.put({"type": "agent_prompt", "data": user_prompt})
+        self.agent_queue.put({"type": "agent_prompt", "data": user_prompt})
 
     def _process_task(self, user_prompt):
         """Full pipeline: see → describe → reason → act."""
@@ -66,43 +68,53 @@ class AgentOrchestrator:
                 self.queue.put({"type": "agent_error", "data": "No camera frame"})
                 return
 
-            markers = detect_aruco(frame)
-            localizer = MarkerLocalizer()
+            h_img, w_img = frame.shape[:2]
 
-            # Build a dict of detected markers: id -> corners
+            # 2. Detect ArUco markers
+            markers = detect_aruco(frame)
             detected_markers = {m["id"]: m["corners"] for m in markers}
 
-            # Ask Gemini for object pixel locations
-            objects = self.gemini.localize_objects(frame)  # new method
+            if not detected_markers:
+                logging.warning("No ArUco markers visible – cannot localize objects.")
+                self.queue.put({"type": "agent_error", "data": "No markers in view"})
+                return
 
-            # Convert pixel coords to world coords
+            # 3. Compute global homography from all visible markers
+            localizer = MarkerLocalizer()
+            H = localizer.compute_global_homography(detected_markers)
+            if H is None:
+                logging.error("Failed to compute homography from visible markers.")
+                self.queue.put({"type": "agent_error", "data": "Homography computation failed"})
+                return
+
+            # 4. Ask Gemini for object pixel locations (normalized 0-1000, [y, x])
+            objects = self.gemini.localize_objects(frame)
+
             located_objects = []
             for obj in objects:
-                marker_id = obj.get("marker_id")
-                if marker_id is not None and marker_id in detected_markers:
-                    pos = localizer.get_object_xy(
-                        marker_id,
-                        detected_markers[marker_id],
-                        (obj["pixel_x"], obj["pixel_y"])
-                    )
-                    if pos:
-                        located_objects.append({
-                            "label": obj["label"],
-                            "x_mm": round(pos[0], 1),
-                            "y_mm": round(pos[1], 1),
-                            "marker_id": marker_id
-                        })
-                else:
-                    # No marker nearby – skip or use a fallback
-                    logging.warning(f"No marker for object {obj['label']}")
+                # Gemini returns point as [y, x] normalized 0-1000
+                norm_y, norm_x = obj["point"]
+                # Convert to pixel coordinates (x = column, y = row)
+                px_x = (norm_x / 1000.0) * w_img
+                px_y = (norm_y / 1000.0) * h_img
 
-            # Build a rich scene description for the LLM
+                # Apply homography to get world mm coordinates
+                pt_pixel = np.array([px_x, px_y, 1.0])
+                pt_world = H @ pt_pixel
+                pt_world = pt_world / pt_world[2]  # homogeneous normalization
+                x_mm, y_mm = pt_world[0], pt_world[1]
+
+                located_objects.append({
+                    "label": obj["label"],
+                    "x_mm": round(x_mm, 1),
+                    "y_mm": round(y_mm, 1),
+                })
+
+            # Build scene description for the LLM
             scene_desc = f"Objects detected: {json.dumps(located_objects)}\n"
-
-            # 2. Get scene understanding from Gemini ER
             logging.info(f"Scene description: {scene_desc}")
 
-            # 3. Build LLM messages
+            # 5. Build LLM messages
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": FEW_SHOT_USER},
@@ -110,14 +122,16 @@ class AgentOrchestrator:
                 {"role": "user", "content": f"Scene: {scene_desc}\nTask: {user_prompt}"}
             ]
 
-            # 4. Request action plan from LLM
+            logging.info(f"LLM full conversation:\n{json.dumps(messages, indent=2)}")
+
+            # 6. Request action plan from LLM
             plan_text = self.llm.chat(messages)
             logging.info(f"LLM plan: {plan_text}")
             if plan_text is None:
                 self.queue.put({"type": "agent_error", "data": "LLM request failed"})
                 return
 
-            # 5. Parse JSON plan
+            # 7. Parse JSON plan
             try:
                 plan = json.loads(plan_text)
             except json.JSONDecodeError:
@@ -130,14 +144,14 @@ class AgentOrchestrator:
                     self.queue.put({"type": "agent_error", "data": f"Could not parse plan: {plan_text}"})
                     return
 
-            # 6. Execute actions one by one
+            # 8. Execute actions one by one
             for step in plan:
                 action = step.get("action")
                 if action == "move_to":
                     x = step["x"]
                     y = step["y"]
                     z = step["z"]
-                    self.robot.move_to_xyz(x, y, z, block=True)   # block until done
+                    self.robot.move_to_xyz(x, y, z, block=True)
                 elif action == "grip_close":
                     self.robot.gripper_close()
                     time.sleep(0.5)

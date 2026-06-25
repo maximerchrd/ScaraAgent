@@ -41,6 +41,8 @@ The answer should follow the json format: [{"point": <point>, "label": <label1>}
 The points are in [y, x] format normalized to 0-1000."""
         
         response_text = self.model.generate_content([prompt, self._to_pil(image)]).text
+
+        logging.info(f"Gemini VLM raw response:\n{response_text}")
         try:
             import re, json
             json_str = re.sub(r'```json|```', '', response_text).strip()

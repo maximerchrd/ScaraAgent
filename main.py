@@ -43,6 +43,7 @@ def main():
 
     # --- Shared queue for inter-thread communication ---
     queue = SafeQueue()
+    agent_queue = SafeQueue()
 
     # --- Optional: Serial & Robot Controller ---
     robot = None
@@ -86,6 +87,7 @@ def main():
                 robot=robot,
                 camera=camera,
                 queue=queue,
+                agent_queue=agent_queue,
                 gemini_api_key=config.llm.gemini_api_key,
                 chatgpt_endpoint=config.llm.chatgpt_endpoint
             )
@@ -97,6 +99,7 @@ def main():
     # --- Launch GUI ---
     app = ScaraAgentApp(
         queue=queue,
+        agent_queue=agent_queue,
         robot=robot,
         camera=camera,
         orchestrator=orchestrator

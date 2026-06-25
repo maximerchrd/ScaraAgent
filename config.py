@@ -82,8 +82,8 @@ class VisionConfig:
 class LLMConfig:
     # Gemini VLM models
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    #gemini_model: str = "gemini-3.1-flash-lite"
-    gemini_model: str = "gemini-robotics-er-1.6-preview"
+    gemini_model: str = "gemini-3.1-flash-lite"
+    #gemini_model: str = "gemini-robotics-er-1.6-preview"
 
     # Groq (ChatGPT-OSS 120B)
     chatgpt_endpoint: str = "https://api.groq.com/openai/v1/chat/completions"

@@ -2,10 +2,10 @@
 import customtkinter as ctk
 
 class AgentPanel(ctk.CTkFrame):
-    def __init__(self, parent, orchestrator=None, queue=None):
+    def __init__(self, parent, orchestrator=None, agent_queue=None):
         super().__init__(parent, height=50)
         self.orchestrator = orchestrator
-        self.queue = queue
+        self.agent_queue = agent_queue
 
         # Prompt entry
         self.prompt_entry = ctk.CTkEntry(self, width=300, placeholder_text="Describe the task...")

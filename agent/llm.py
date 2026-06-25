@@ -6,6 +6,7 @@ Used for reasoning and action planning.
 
 import requests
 import json
+import logging
 from config import config
 
 class ChatGPTOSS:
@@ -32,6 +33,7 @@ class ChatGPTOSS:
                 timeout=config.llm.request_timeout
             )
             resp.raise_for_status()
+            logging.info(f"LLM raw response:\n{resp.json()["choices"][0]["message"]["content"]}")
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
             print(f"LLM request failed: {e}")

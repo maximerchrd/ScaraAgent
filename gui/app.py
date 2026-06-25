@@ -23,9 +23,10 @@ except ImportError:
 
 
 class ScaraAgentApp(ctk.CTk):
-    def __init__(self, queue, robot=None, camera=None, orchestrator=None):
+    def __init__(self, queue, agent_queue, robot=None, camera=None, orchestrator=None):
         super().__init__()
         self.queue = queue
+        self.agent_queue = agent_queue
         self.robot = robot
         self.camera = camera
         self.orchestrator = orchestrator
@@ -94,7 +95,7 @@ class ScaraAgentApp(ctk.CTk):
             self.agent_panel = AgentPanel(
                 self,
                 orchestrator=self.orchestrator,
-                queue=self.queue
+                agent_queue=self.agent_queue
             )
             self.agent_panel.grid(row=2, column=0, columnspan=3, padx=20, pady=(0,10), sticky="ew")
 
