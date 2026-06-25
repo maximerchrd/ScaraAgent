@@ -219,6 +219,12 @@ class ScaraAgentApp(ctk.CTk):
                     self.status_panel.set_homing_status("aborted")
                 elif msg_type == "robot_estop":
                     self.status_panel.set_status_text("EMERGENCY STOP", "red")
+                elif msg_type == "agent_response":
+                    if hasattr(self, 'agent_panel') and self.agent_panel:
+                        self.agent_panel.display_response(data)
+                elif msg_type == "agent_error":
+                    if hasattr(self, 'agent_panel') and self.agent_panel:
+                        self.agent_panel.display_error(data)
                 # Future message types (camera frame, agent output) will be handled here
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")

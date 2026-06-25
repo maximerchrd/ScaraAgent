@@ -33,11 +33,11 @@ class RobotConfig:
     serial_timeout: float = 0.05
 
     # Kinematics (mm & steps)
-    link1_length: float = 200.0       # L1
-    link2_length: float = 150.0       # L2
-    steps_per_deg_j1: float = 11.3778
-    steps_per_deg_j2: float = 11.3778
-    z_steps_per_mm: float = 40.0      # adjust to your leadscrew
+    link1_length: float = 325.5       # upper arm length (mm)
+    link2_length: float = 327.5       # forearm length (mm)
+    steps_per_deg_j1: float = 139.31
+    steps_per_deg_j2: float = 63.83
+    z_steps_per_mm: float = 226.63 
 
     # Default joint limits
     j1_min: float = -150.0
@@ -59,7 +59,7 @@ class RobotConfig:
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = 0#"http://10.210.236.252:8080/video"
+    camera_index: Any = "http://10.210.236.252:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30
@@ -72,16 +72,18 @@ class VisionConfig:
 
     marker_positions: dict = field(default_factory=lambda: {
         0: {"x": 0.0, "y": 0.0, "z": 0.0},    # corner 0 of marker 0 (master zero point)
-        1: {"x": 200.0, "y": 150.0, "z": 0.0}, # corner 0 of marker 1
-        2: {"x": -100.0, "y": 300.0, "z": 0.0},
-        3: {"x": 150.0, "y": -200.0, "z": 0.0}
+        1: {"x": -525.2, "y": -175.0, "z": 0.0}, # corner 0 of marker 1
+        2: {"x": -173, "y": -275.5, "z": 0.0},
+        2: {"x": -98.1, "y": -299.6, "z": 0.0},
+        3: {"x": 0.002, "y": -175.0, "z": 0.0}
     })
 
 @dataclass
 class LLMConfig:
     # Gemini VLM models
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    gemini_model: str = "gemini-3.1-flash-lite"
+    #gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-robotics-er-1.6-preview"
 
     # Groq (ChatGPT-OSS 120B)
     chatgpt_endpoint: str = "https://api.groq.com/openai/v1/chat/completions"

@@ -30,32 +30,27 @@ class GeminiER:
         prompt = prompt or default_prompt
         response = self.model.generate_content([prompt, pil_img])
         return response.text
-    def localize_objects(self, image, image_width=1280, image_height=720):
+    def localize_objects(self, image):
         """
-        Ask Gemini to find objects and report pixel coordinates + nearest marker.
-        Returns a list of dicts, e.g.:
-        [{'label': 'red cube', 'pixel_x': 340, 'pixel_y': 220, 'marker_id': 3}, ...]
+        Ask Gemini Robotics-ER to point to all objects in the scene.
+        Returns a list of dicts with 'point' (normalized [y, x] 0-1000) and 'label'.
         """
-        prompt = f"""
-You are a robot vision system. The image size is {image_width}x{image_height} pixels.
-List every movable object (cubes, boxes, tools) and for each object provide:
-- A short label (e.g., "red cube")
-- Its approximate pixel coordinates (x, y) of its center
-- The ID of the nearest ArUco marker in the image (if a marker is close enough to be the "nearest", give its numeric ID; otherwise use null).
-
-Return ONLY a JSON array. Do not include any other text. Example:
-[{{"label": "red cube", "pixel_x": 200, "pixel_y": 150, "marker_id": 5}}]
-""".strip()  # ← strip leading/trailing whitespace
+        prompt = """Point to no more than 20 items in the image. 
+The label returned should be an identifying name for the object detected.
+The answer should follow the json format: [{"point": <point>, "label": <label1>}, ...].
+The points are in [y, x] format normalized to 0-1000."""
+        
         response_text = self.model.generate_content([prompt, self._to_pil(image)]).text
-        # Try to extract JSON
         try:
-            # Clean up possible markdown code fences
+            import re, json
             json_str = re.sub(r'```json|```', '', response_text).strip()
             objects = json.loads(json_str)
-            return objects if isinstance(objects, list) else []
+            if isinstance(objects, list):
+                # Extract 'point' and 'label' only
+                return [{"point": obj["point"], "label": obj["label"]} for obj in objects if "point" in obj and "label" in obj]
         except Exception as e:
-            logging.warning(f"Gemini JSON parse failed: {e}\nResponse: {response_text}")
-            return []
+            logging.warning(f"Gemini Robotics-ER parse failed: {e}\nResponse: {response_text}")
+        return []
 
     def _to_pil(self, image):
         from PIL import Image

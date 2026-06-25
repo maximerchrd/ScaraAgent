@@ -1,14 +1,12 @@
 # kinematics.py
 import math
+from config import config as cfg
 
-# ============================================================
-# CONFIGURATION – EDIT AFTER CALIBRATION
-# ============================================================
-STEPS_PER_MM_Z = 226.63          # adjust: steps per mm vertical
-STEPS_PER_DEG_J1 = 139.31       # adjust: steps per degree J1
-STEPS_PER_DEG_J2 = 63.83       # adjust: steps per degree J2
-L1 = 325.5                     # upper arm length (mm)
-L2 = 327.5                     # forearm length (mm)
+L1 = cfg.robot.link1_length
+L2 = cfg.robot.link2_length
+STEPS_PER_MM_Z = cfg.robot.z_steps_per_mm
+STEPS_PER_DEG_J1 = cfg.robot.steps_per_deg_j1
+STEPS_PER_DEG_J2 = cfg.robot.steps_per_deg_j2
 
 # ============================================================
 # FORWARD KINEMATICS (steps → real‑world XYZ)
