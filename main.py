@@ -8,6 +8,7 @@ import sys
 import logging
 from utils.logger import setup_logging
 from config import config
+from vision.localization import MarkerCalibrator
 
 # ----------------------------------------------------------------------
 # Import components gracefully – if a module is missing, the app still works manually.
@@ -79,6 +80,16 @@ def main():
     else:
         logger.info("Vision module not found – no camera feed.")
 
+    # --- Marker Calibrator (static ArUco averaging) ---
+    calibrator = None
+    if camera:
+        calibrator = MarkerCalibrator(
+            camera=camera,
+            marker_ids=list(config.vision.marker_positions.keys()),
+            num_frames=100
+        )
+        logger.info("Marker calibrator created.")
+
     # --- Optional: Agent Orchestrator ---
     orchestrator = None
     if AgentOrchestrator and robot:
@@ -89,7 +100,8 @@ def main():
                 queue=queue,
                 agent_queue=agent_queue,
                 gemini_api_key=config.llm.gemini_api_key,
-                chatgpt_endpoint=config.llm.chatgpt_endpoint
+                chatgpt_endpoint=config.llm.chatgpt_endpoint,
+                calibrator=calibrator          # <-- pass calibrator
             )
             orchestrator.start()
             logger.info("Agent orchestrator ready.")
@@ -102,7 +114,8 @@ def main():
         agent_queue=agent_queue,
         robot=robot,
         camera=camera,
-        orchestrator=orchestrator
+        orchestrator=orchestrator,
+        calibrator=calibrator                 # <-- pass calibrator to GUI
     )
 
     try:

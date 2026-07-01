@@ -23,13 +23,14 @@ except ImportError:
 
 
 class ScaraAgentApp(ctk.CTk):
-    def __init__(self, queue, agent_queue, robot=None, camera=None, orchestrator=None):
+    def __init__(self, queue, agent_queue, robot=None, camera=None, orchestrator=None, calibrator=None):
         super().__init__()
         self.queue = queue
         self.agent_queue = agent_queue
         self.robot = robot
         self.camera = camera
         self.orchestrator = orchestrator
+        self.calibrator = calibrator
 
         self.title("SCARA Agent Control Dashboard")
         self.geometry("1450x850")
@@ -87,7 +88,7 @@ class ScaraAgentApp(ctk.CTk):
         self.arm_canvas.grid(row=0, column=0)
         self.arm_canvas.update_joints(0, 0)
 
-        # Checkboxes next to the arm
+        # Checkboxes and calibration controls next to the arm
         toggle_frame = ctk.CTkFrame(arm_row, fg_color="transparent")
         toggle_frame.grid(row=0, column=1, padx=20, sticky="w")
 
@@ -97,14 +98,27 @@ class ScaraAgentApp(ctk.CTk):
         self.show_vlm = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(toggle_frame, text="Show VLM Objects", variable=self.show_vlm).pack(anchor="w", pady=3)
 
+        self.show_calibrated = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(toggle_frame, text="Show Calibrated Markers", variable=self.show_calibrated).pack(anchor="w", pady=3)
+
+        # Calibration button and status
+        self.calib_btn = ctk.CTkButton(toggle_frame, text="Recalibrate", width=100,
+                                       command=self._start_calibration)
+        self.calib_btn.pack(anchor="w", pady=2)
+
+        self.calib_status = ctk.CTkLabel(toggle_frame, text="Not calibrated", text_color="gray")
+        self.calib_status.pack(anchor="w")
+
         self.camera_panel = CameraPanel(
             right_frame,
             camera=self.camera,
             queue=self.queue,
             width=640,
             height=360,
-            show_aruco_var=self.show_aruco,      # pass the vars so CameraPanel can read them
-            show_vlm_var=self.show_vlm
+            show_aruco_var=self.show_aruco,
+            show_vlm_var=self.show_vlm,
+            calibrator=self.calibrator,
+            show_calibrated_var=self.show_calibrated
         )
         self.camera_panel.grid(row=1, column=0, sticky="nsew")
 
@@ -118,7 +132,7 @@ class ScaraAgentApp(ctk.CTk):
             self.agent_panel.grid(row=2, column=0, columnspan=3, padx=20, pady=(0,10), sticky="ew")
 
         # --- Keyboard bindings ---
-        self.bind_keyboard()
+        # self.bind_keyboard()
 
         # --- Start queue processing loop ---
         self.after(50, self.process_queue)
@@ -126,6 +140,22 @@ class ScaraAgentApp(ctk.CTk):
         # Clean exit
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    # ---------- Calibration methods ----------
+    def _start_calibration(self):
+        if not self.calibrator:
+            return
+        self.calib_btn.configure(state="disabled", text="Calibrating…")
+        self.calib_status.configure(text="Capturing 100 frames…", text_color="orange")
+        self.calibrator.calibrate(callback=self._on_calibration_done)
+
+    def _on_calibration_done(self, success):
+        self.calib_btn.configure(state="normal", text="Recalibrate")
+        if success:
+            self.calib_status.configure(text="Calibrated ✓", text_color="lightgreen")
+        else:
+            self.calib_status.configure(text="Calibration failed", text_color="red")
+
+    # ---------- Keyboard bindings (disabled) ----------
     def bind_keyboard(self):
         """Bind all hotkeys to the main window."""
         # Jogging (continuous for Z, A, B)
@@ -231,7 +261,6 @@ class ScaraAgentApp(ctk.CTk):
                     self.status_panel.update_switches(data)
                 elif msg_type == "robot_homing_complete":
                     self.status_panel.set_homing_status("complete")
-                    # Reset zero offsets because homing changes the coordinate system
                     if self.robot:
                         self.robot.reset_zero()
                 elif msg_type == "robot_homing_aborted":
@@ -247,11 +276,9 @@ class ScaraAgentApp(ctk.CTk):
                 elif msg_type == "vlm_objects":
                     if hasattr(self, 'camera_panel') and self.camera_panel:
                         self.camera_panel.update_vlm_objects(data)
-                # Future message types (camera frame, agent output) will be handled here
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 
-        # Continue polling
         self.after(50, self.process_queue)
 
     def handle_position_update(self, data):
@@ -259,29 +286,21 @@ class ScaraAgentApp(ctk.CTk):
         if len(data) < 3:
             return
 
-        # Convert to ints
         steps_z = int(data[0])
         steps_j1 = int(data[1])
         steps_j2 = int(data[2])
         self.current_yaw = int(data[3]) if len(data) > 3 else 90
 
-        # ✅ Keep robot controller's cache in sync
         if self.robot:
             self.robot._last_z = steps_z
             self.robot._last_j1 = steps_j1
             self.robot._last_j2 = steps_j2
             self.robot._last_yaw = self.current_yaw
 
-        # Update status panel labels (relative steps)
         self.status_panel.update_positions(steps_z, steps_j1, steps_j2, self.current_yaw)
-
-        # Store for zero / measurement
         self.last_steps = (steps_z, steps_j1, steps_j2)
-
-        # Update arm graphic (native angles)
         self.arm_canvas.update_joints(steps_j1, steps_j2)
 
-        # Update XYZ label
         try:
             x_native, y_native, z_native = joints_to_xyz(steps_z, steps_j1, steps_j2)
             if self.robot and self.robot.has_zero:

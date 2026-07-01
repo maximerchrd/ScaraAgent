@@ -76,6 +76,12 @@ class VisionConfig:
         3: {"x": 122.1, "y": -389.2, "z": 0.0}
     })
 
+    # Workspace bounds for outlier rejection (mm, in robot coordinates)
+    workspace_x_min: float = -200.0
+    workspace_x_max: float = 800.0
+    workspace_y_min: float = -500.0
+    workspace_y_max: float = 200.0
+
 @dataclass
 class LLMConfig:
     # Gemini VLM models

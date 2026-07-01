@@ -1,6 +1,9 @@
 # vision/localization.py
 import cv2
 import numpy as np
+import threading
+import time
+from vision.aruco_detector import detect_aruco
 
 class MarkerLocalizer:
     def __init__(self, marker_size_mm=50.0):
@@ -90,3 +93,50 @@ class MarkerLocalizer:
         # Compute homography (at least 4 points needed)
         H, _ = cv2.findHomography(pixel_points, world_points, cv2.RANSAC, 3.0)
         return H
+
+class MarkerCalibrator:
+    def __init__(self, camera, marker_ids=[0,2,3], num_frames=100):
+        self.camera = camera
+        self.marker_ids = marker_ids
+        self.num_frames = num_frames
+        self.calibrated_corners = {}   # id → (4,2) numpy array
+        self.is_calibrated = False
+        self._lock = threading.Lock()
+
+    def calibrate(self, callback=None):
+        """Start calibration in a background thread. callback(is_success) called when done."""
+        t = threading.Thread(target=self._calibrate_thread, args=(callback,), daemon=True)
+        t.start()
+
+    def _calibrate_thread(self, callback):
+        accum = {id: [] for id in self.marker_ids}
+        collected = 0
+        attempts = 0
+        max_attempts = self.num_frames * 3
+
+        while collected < self.num_frames and attempts < max_attempts:
+            frame = self.camera.get_latest_frame()
+            if frame is None:
+                time.sleep(0.05)
+                attempts += 1
+                continue
+            markers = detect_aruco(frame)
+            detected = {m["id"]: m["corners"] for m in markers}
+            if all(id in detected for id in self.marker_ids):
+                for id in self.marker_ids:
+                    accum[id].append(detected[id])
+                collected += 1
+            attempts += 1
+            time.sleep(0.03)
+
+        with self._lock:
+            if collected > 0:
+                for id in self.marker_ids:
+                    if accum[id]:
+                        self.calibrated_corners[id] = np.mean(accum[id], axis=0).astype(np.float32)
+                self.is_calibrated = True
+            else:
+                self.is_calibrated = False
+
+        if callback:
+            callback(self.is_calibrated)

@@ -19,13 +19,15 @@ from config import config
 
 
 class AgentOrchestrator:
-    def __init__(self, robot, camera, queue, agent_queue, gemini_api_key=None, chatgpt_endpoint=None):
+    def __init__(self, robot, camera, queue, agent_queue, gemini_api_key=None,
+                 chatgpt_endpoint=None, calibrator=None):
         self.robot = robot
         self.camera = camera
         self.queue = queue
         self.agent_queue = agent_queue
         self.gemini = GeminiER(api_key=gemini_api_key)
         self.llm = ChatGPTOSS(endpoint=chatgpt_endpoint)
+        self.calibrator = calibrator
 
         self.running = False
         self.thread = None
@@ -72,8 +74,12 @@ class AgentOrchestrator:
             h_img, w_img = frame.shape[:2]
 
             # 2. Detect ArUco markers
-            markers = detect_aruco(frame)
-            detected_markers = {m["id"]: m["corners"] for m in markers}
+            if self.calibrator and self.calibrator.is_calibrated:
+                detected_markers = self.calibrator.calibrated_corners
+                logging.info("Using calibrated marker positions.")
+            else:
+                markers = detect_aruco(frame)
+                detected_markers = {m["id"]: m["corners"] for m in markers}
 
             if not detected_markers:
                 logging.warning("No ArUco markers visible – cannot localize objects.")
@@ -107,6 +113,13 @@ class AgentOrchestrator:
                 pt_world = H @ pt_pixel
                 pt_world = pt_world / pt_world[2]  # homogeneous normalization
                 x_mm, y_mm = pt_world[0], pt_world[1]
+
+                # Filter out homography outliers
+                if not (config.vision.workspace_x_min <= x_mm <= config.vision.workspace_x_max and
+                        config.vision.workspace_y_min <= y_mm <= config.vision.workspace_y_max):
+                    logging.warning(f"Outlier rejected: {obj['label']} at ({x_mm:.1f}, {y_mm:.1f}) "
+                                    f"— outside workspace bounds")
+                    continue
 
                 located_objects.append({
                     "label": obj["label"],
