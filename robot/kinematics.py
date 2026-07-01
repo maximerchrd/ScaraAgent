@@ -49,3 +49,25 @@ def xyz_to_joints(x_mm, y_mm, z_mm, elbow_up=True):
     steps_z = round(z_mm * STEPS_PER_MM_Z)
     
     return steps_z, steps_j1, steps_j2
+
+def xyz_to_joints_closest(x_mm, y_mm, z_mm, current_j1_steps, current_j2_steps):
+    """
+    Choose the elbow configuration that minimises total joint movement.
+    """
+    steps_z = round(z_mm * STEPS_PER_MM_Z)
+    
+    # Both solutions
+    _, j1_up, j2_up = xyz_to_joints(x_mm, y_mm, z_mm, elbow_up=True)
+    _, j1_down, j2_down = xyz_to_joints(x_mm, y_mm, z_mm, elbow_up=False)
+    
+    # Movement in degrees
+    cur_j1 = current_j1_steps / STEPS_PER_DEG_J1
+    cur_j2 = current_j2_steps / STEPS_PER_DEG_J2
+    
+    move_up = abs(j1_up / STEPS_PER_DEG_J1 - cur_j1) + abs(j2_up / STEPS_PER_DEG_J2 - cur_j2)
+    move_down = abs(j1_down / STEPS_PER_DEG_J1 - cur_j1) + abs(j2_down / STEPS_PER_DEG_J2 - cur_j2)
+    
+    if move_up <= move_down:
+        return steps_z, j1_up, j2_up
+    else:
+        return steps_z, j1_down, j2_down

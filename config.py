@@ -71,11 +71,9 @@ class VisionConfig:
     dist_coeffs: Any = None
 
     marker_positions: dict = field(default_factory=lambda: {
-        0: {"x": 0.0, "y": 0.0, "z": 0.0},    # corner 0 of marker 0 (master zero point)
-        1: {"x": -525.2, "y": -175.0, "z": 0.0}, # corner 0 of marker 1
-        2: {"x": -173, "y": -275.5, "z": 0.0},
-        2: {"x": -98.1, "y": -299.6, "z": 0.0},
-        3: {"x": 0.002, "y": -175.0, "z": 0.0}
+        0: {"x": 644.1, "y": -105.8, "z": 0.0},    #corner 0 of marker 0 (master zero point)
+        2: {"x": 453.4, "y": -376.2, "z": 0.0}, 
+        3: {"x": 122.1, "y": -389.2, "z": 0.0}
     })
 
 @dataclass
