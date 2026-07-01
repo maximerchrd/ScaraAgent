@@ -1,5 +1,5 @@
 # gui/panels/camera_panel.py
-"""Camera panel that displays the live webcam feed with ArUco overlays."""
+"""Camera panel that displays the live webcam feed with ArUco and VLM overlays."""
 
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -11,17 +11,25 @@ from vision.image_utils import draw_markers, resize_frame
 
 
 class CameraPanel(ctk.CTkFrame):
-    def __init__(self, parent, camera=None, queue=None, width=640, height=480):
+    def __init__(self, parent, camera=None, queue=None, width=640, height=480,
+                 show_aruco_var=None, show_vlm_var=None):
         super().__init__(parent)
         self.camera = camera
         self.queue = queue
         self.display_width = width
         self.display_height = height
 
-        # Title
-        ctk.CTkLabel(self, text="Camera Feed", font=("Arial", 14, "bold")).pack(pady=5)
+        # Use external BooleanVars if provided, otherwise create local ones
+        self.show_aruco = show_aruco_var or ctk.BooleanVar(value=True)
+        self.show_vlm = show_vlm_var or ctk.BooleanVar(value=True)
 
-        # Label that will hold the video frame
+        # Store latest VLM objects
+        self.vlm_objects = []
+
+        # Title
+        ctk.CTkLabel(self, text="Camera Feed", font=("Arial", 14, "bold")).pack(pady=(5, 0))
+
+        # Video label
         self.video_label = ctk.CTkLabel(self, text="Waiting for camera...", width=width, height=height)
         self.video_label.pack(padx=10, pady=5)
 
@@ -29,60 +37,69 @@ class CameraPanel(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(self, text="No frame", text_color="gray")
         self.status_label.pack(pady=2)
 
-        # Checkbox to show/hide ArUco overlay
-        self.show_aruco = ctk.BooleanVar(value=True)
-        self.aruco_check = ctk.CTkCheckBox(self, text="Show ArUco markers", variable=self.show_aruco)
-        self.aruco_check.pack(pady=5)
-
-        # Start polling the queue for frames
+        # Start polling
         self._poll_frame()
 
-    def _poll_frame(self):
-        """Check the queue for new camera frames and display the latest."""
-        if self.queue:
-            frame = None
-            # Drain all camera frames from the queue, keeping only the latest
-            while not self.queue.empty():
-                msg = self.queue.get_nowait()
-                if msg.get("type") == "camera_frame":
-                    frame = msg["data"]
+    def update_vlm_objects(self, objects):
+        """Receive list of dicts: {"point": [y_norm, x_norm], "label": ...} from VLM."""
+        self.vlm_objects = objects
 
+    def _poll_frame(self):
+        """Grab the latest camera frame directly (no queue drain)."""
+        if self.camera:
+            frame = self.camera.get_latest_frame()
             if frame is not None:
                 self._display_frame(frame)
-            else:
-                # Try the camera directly as fallback
-                if self.camera:
-                    frame = self.camera.get_latest_frame()
-                    if frame is not None:
-                        self._display_frame(frame)
 
-        # Poll again in 50ms (~20fps)
         self.after(50, self._poll_frame)
 
     def _display_frame(self, frame):
-        """Convert a BGR frame to PhotoImage and show it."""
+        """Convert a BGR frame to PhotoImage and show it with optional overlays."""
         try:
-            # Detect ArUco markers if enabled
+            status_parts = []
+
             if self.show_aruco.get():
                 markers = detect_aruco(frame)
                 draw_markers(frame, markers)
                 marker_ids = [m["id"] for m in markers] if markers else []
-                self.status_label.configure(text=f"Markers: {marker_ids}" if marker_ids else "No markers detected")
+                status_parts.append(f"Markers: {marker_ids}" if marker_ids else "No markers")
             else:
-                self.status_label.configure(text="ArUco overlay off")
+                status_parts.append("ArUco off")
 
-            # Resize for display
+            if self.show_vlm.get() and self.vlm_objects:
+                self._draw_vlm_objects(frame)
+                status_parts.append("VLM on")
+            elif self.show_vlm.get():
+                status_parts.append("VLM: no objects")
+
             display_frame = resize_frame(frame, width=self.display_width, height=self.display_height)
-
-            # Convert BGR to RGB for PIL
             rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb)
             imgtk = ImageTk.PhotoImage(image=img)
 
-            # Update the label
             self.video_label.configure(image=imgtk, text="")
-            self.video_label.image = imgtk  # Keep reference to prevent garbage collection
+            self.video_label.image = imgtk
+
+            self.status_label.configure(text=" | ".join(status_parts) if status_parts else "No frame")
 
         except Exception as e:
             logging.error(f"Camera display error: {e}")
             self.status_label.configure(text=f"Error: {e}")
+
+    def _draw_vlm_objects(self, frame):
+        """Draw circles and labels for VLM objects (normalised coords 0-1000)."""
+        h, w = frame.shape[:2]
+        for obj in self.vlm_objects:
+            try:
+                norm_y, norm_x = obj["point"]
+                label = obj.get("label", "?")
+            except (KeyError, ValueError):
+                continue
+
+            px_x = int((norm_x / 1000.0) * w)
+            px_y = int((norm_y / 1000.0) * h)
+
+            cv2.circle(frame, (px_x, px_y), 10, (0, 255, 0), 2)
+            cv2.circle(frame, (px_x, px_y), 2, (0, 0, 255), -1)
+            cv2.putText(frame, label, (px_x + 12, px_y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)

@@ -35,10 +35,12 @@ class GeminiER:
         Ask Gemini Robotics-ER to point to all objects in the scene.
         Returns a list of dicts with 'point' (normalized [y, x] 0-1000) and 'label'.
         """
-        prompt = """Point to no more than 20 items in the image. 
-The label returned should be an identifying name for the object detected.
-The answer should follow the json format: [{"point": <point>, "label": <label1>}, ...].
-The points are in [y, x] format normalized to 0-1000."""
+        prompt = """Look carefully at this image of a robot workspace. 
+Identify and point to up to 15 distinct physical objects you can see (tools, parts, blocks, boxes, etc.).
+For each object, provide a short descriptive name (e.g., "red cube", "blue screwdriver", "metal bracket", "black box").
+Ignore ArUco markers — only point to actual objects that could be manipulated.
+Return ONLY a JSON array like: [{"point": [y, x], "label": "descriptive name"}, ...]
+Points are [y, x] normalized 0-1000."""
         
         response_text = self.model.generate_content([prompt, self._to_pil(image)]).text
 

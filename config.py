@@ -103,6 +103,7 @@ class Config:
 
     # Agent behaviour
     agent_loop_delay: float = 0.5     # seconds between action checks
+    skip_llm: bool = False
 
 # Create a singleton instance for easy import
 config = Config()

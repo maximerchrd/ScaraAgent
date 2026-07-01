@@ -15,6 +15,7 @@ from agent.llm import ChatGPTOSS
 from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
+from config import config
 
 
 class AgentOrchestrator:
@@ -90,6 +91,9 @@ class AgentOrchestrator:
             # 4. Ask Gemini for object pixel locations (normalized 0-1000, [y, x])
             objects = self.gemini.localize_objects(frame)
 
+            # Send raw VLM object list to GUI for overlay
+            self.queue.put({"type": "vlm_objects", "data": objects})
+
             located_objects = []
             for obj in objects:
                 # Gemini returns point as [y, x] normalized 0-1000
@@ -125,8 +129,13 @@ class AgentOrchestrator:
             logging.info(f"LLM full conversation:\n{json.dumps(messages, indent=2)}")
 
             # 6. Request action plan from LLM
-            plan_text = self.llm.chat(messages)
-            logging.info(f"LLM plan: {plan_text}")
+            if config.skip_llm:
+                plan_text = "[]"
+                logging.info("LLM skipped (testing mode)")
+            else:
+                plan_text = self.llm.chat(messages)
+                logging.info(f"LLM plan: {plan_text}")
+
             if plan_text is None:
                 self.queue.put({"type": "agent_error", "data": "LLM request failed"})
                 return

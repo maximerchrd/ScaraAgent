@@ -70,23 +70,41 @@ class ScaraAgentApp(ctk.CTk):
         self.status_panel = StatusPanel(self, robot)
         self.status_panel.grid(row=1, column=1, padx=20, pady=20, sticky="nsew")
 
-        # --- Right: Arm canvas + camera stacked vertically ---
+        # --- Right: Arm canvas + checkboxes, then camera below ---
         right_frame = ctk.CTkFrame(self, fg_color="transparent")
         right_frame.grid(row=1, column=2, padx=20, pady=20, sticky="nsew")
-        right_frame.grid_rowconfigure(0, weight=0)      # arm canvas (fixed height)
+        right_frame.grid_rowconfigure(0, weight=0)      # arm + checkboxes row
         right_frame.grid_rowconfigure(1, weight=1)      # camera fills remaining space
         right_frame.grid_columnconfigure(0, weight=1)
 
-        self.arm_canvas = ArmCanvas(right_frame, width=240, height=240, bg=DARK_BG)
-        self.arm_canvas.grid(row=0, column=0, pady=(0, 10))
+        # Top row: arm canvas + overlay toggles
+        arm_row = ctk.CTkFrame(right_frame, fg_color="transparent")
+        arm_row.grid(row=0, column=0, pady=(0, 10), sticky="ew")
+        arm_row.grid_columnconfigure(0, weight=0)   # arm canvas
+        arm_row.grid_columnconfigure(1, weight=1)   # spacer / checkboxes
+
+        self.arm_canvas = ArmCanvas(arm_row, width=160, height=160, bg=DARK_BG)
+        self.arm_canvas.grid(row=0, column=0)
         self.arm_canvas.update_joints(0, 0)
+
+        # Checkboxes next to the arm
+        toggle_frame = ctk.CTkFrame(arm_row, fg_color="transparent")
+        toggle_frame.grid(row=0, column=1, padx=20, sticky="w")
+
+        self.show_aruco = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(toggle_frame, text="Show ArUco", variable=self.show_aruco).pack(anchor="w", pady=3)
+
+        self.show_vlm = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(toggle_frame, text="Show VLM Objects", variable=self.show_vlm).pack(anchor="w", pady=3)
 
         self.camera_panel = CameraPanel(
             right_frame,
             camera=self.camera,
             queue=self.queue,
             width=640,
-            height=360            # smaller to fit below the arm canvas
+            height=360,
+            show_aruco_var=self.show_aruco,      # pass the vars so CameraPanel can read them
+            show_vlm_var=self.show_vlm
         )
         self.camera_panel.grid(row=1, column=0, sticky="nsew")
 
@@ -226,6 +244,9 @@ class ScaraAgentApp(ctk.CTk):
                 elif msg_type == "agent_error":
                     if hasattr(self, 'agent_panel') and self.agent_panel:
                         self.agent_panel.display_error(data)
+                elif msg_type == "vlm_objects":
+                    if hasattr(self, 'camera_panel') and self.camera_panel:
+                        self.camera_panel.update_vlm_objects(data)
                 # Future message types (camera frame, agent output) will be handled here
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
