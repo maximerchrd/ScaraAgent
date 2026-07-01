@@ -57,6 +57,11 @@ class RobotConfig:
     gripper_open_duration: int = 1500
     gripper_close_duration: int = 800
 
+    # Safe park position in work coordinates (used when no object found)
+    park_x_mm: float = 300.0
+    park_y_mm: float = -460.0
+    park_z_mm: float = 10.0
+
 @dataclass
 class VisionConfig:
     camera_index: Any = "http://10.210.236.252:8080/video"

@@ -1,9 +1,4 @@
 # agent/llm.py
-"""
-Interface to ChatGPT OSS 120B (or any OpenAI‑compatible API).
-Used for reasoning and action planning.
-"""
-
 import requests
 import json
 import logging
@@ -18,12 +13,14 @@ class ChatGPTOSS:
             "Authorization": f"Bearer {config.llm.chatgpt_api_key}"
         }
 
-    def chat(self, messages, temperature=0.3):
+    def chat(self, messages, temperature=0.6):    # recommended 0.5‑0.7
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 1024
+            "max_completion_tokens": 4096,        # increased for reasoning
+            "top_p": 0.95,
+            "include_reasoning": True             # explicit, though default is true
         }
         try:
             resp = requests.post(
@@ -33,8 +30,19 @@ class ChatGPTOSS:
                 timeout=config.llm.request_timeout
             )
             resp.raise_for_status()
-            logging.info(f"LLM raw response:\n{resp.json()["choices"][0]["message"]["content"]}")
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            choice = data["choices"][0]["message"]
+            content = choice.get("content", "")
+            reasoning = choice.get("reasoning", "")   # ← the chain‑of‑thought
+
+            if reasoning:
+                logging.info(f"LLM reasoning:\n{reasoning}")
+            logging.info(f"LLM raw response:\n{content}")
+
+            return {
+                "content": content,
+                "reasoning": reasoning
+            }
         except Exception as e:
-            print(f"LLM request failed: {e}")
+            logging.error(f"LLM request failed: {e}")
             return None

@@ -144,14 +144,20 @@ class AgentOrchestrator:
             # 6. Request action plan from LLM
             if config.skip_llm:
                 plan_text = "[]"
+                llm_reasoning = ""
                 logging.info("LLM skipped (testing mode)")
             else:
-                plan_text = self.llm.chat(messages)
+                llm_response = self.llm.chat(messages)
+                if llm_response is None:
+                    self.queue.put({"type": "agent_error", "data": "LLM request failed"})
+                    return
+                plan_text = llm_response.get("content", "")
+                llm_reasoning = llm_response.get("reasoning", "")
+                
+                if llm_reasoning:
+                    self.queue.put({"type": "agent_reasoning", "data": llm_reasoning})
+                
                 logging.info(f"LLM plan: {plan_text}")
-
-            if plan_text is None:
-                self.queue.put({"type": "agent_error", "data": "LLM request failed"})
-                return
 
             # 7. Parse JSON plan
             try:
@@ -182,6 +188,14 @@ class AgentOrchestrator:
                     time.sleep(0.5)
                 elif action == "wait":
                     time.sleep(step.get("seconds", 1))
+                elif action == "move_safe":
+                    logging.info("Executing move_safe to park position.")
+                    self.robot.move_to_xyz(
+                        config.robot.park_x_mm,
+                        config.robot.park_y_mm,
+                        config.robot.park_z_mm,
+                        block=True
+                    )
                 else:
                     logging.warning(f"Unknown action: {action}")
 

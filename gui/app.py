@@ -7,6 +7,7 @@ Arranges panels, sets up keyboard bindings, and processes the shared queue.
 import tkinter as tk
 import customtkinter as ctk
 import logging
+from config import config
 
 from gui.styles import DARK_BG
 from gui.panels.connection_panel import ConnectionPanel
@@ -53,6 +54,7 @@ class ScaraAgentApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=0)             # connection bar
         self.grid_rowconfigure(1, weight=1)             # main content fills rest
         self.grid_rowconfigure(2, weight=0)      # agent panel
+        self.grid_rowconfigure(2, minsize=90)
 
         # --- Top: Connection ---
         self.conn_panel = ConnectionPanel(self, robot)
@@ -263,6 +265,12 @@ class ScaraAgentApp(ctk.CTk):
                     self.status_panel.set_homing_status("complete")
                     if self.robot:
                         self.robot.reset_zero()
+                        # Automatically move to the safe park position defined in config
+                        self.robot.move_to_xyz(
+                            config.robot.park_x_mm,
+                            config.robot.park_y_mm,
+                            config.robot.park_z_mm
+                        )
                 elif msg_type == "robot_homing_aborted":
                     self.status_panel.set_homing_status("aborted")
                 elif msg_type == "robot_estop":
@@ -276,6 +284,9 @@ class ScaraAgentApp(ctk.CTk):
                 elif msg_type == "vlm_objects":
                     if hasattr(self, 'camera_panel') and self.camera_panel:
                         self.camera_panel.update_vlm_objects(data)
+                elif msg_type == "agent_reasoning":
+                    if hasattr(self, 'agent_panel') and self.agent_panel:
+                        self.agent_panel.display_reasoning(data)
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 
