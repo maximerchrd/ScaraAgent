@@ -62,6 +62,9 @@ class RobotConfig:
     park_y_mm: float = -460.0
     park_z_mm: float = 10.0
 
+    safe_z_mm: float = 20.0      # travel height (clears all objects)
+    pick_z_mm: float = 0.0      # height for gripping / releasing
+
 @dataclass
 class VisionConfig:
     camera_index: Any = "http://10.210.236.252:8080/video"

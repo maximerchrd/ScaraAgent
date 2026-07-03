@@ -7,37 +7,39 @@ SYSTEM_PROMPT = """
 You control a 5‑DOF SCARA robot arm with a gripper. The robot operates in a workspace of roughly 500x500 mm.
 You are given a description of the scene (from a vision system) and a task from the user. Take into account that
 the detection and classification is not perfect.
-Your job is to produce a plan of actions that the robot can execute.
 
-Actions are exactly one of:
-- move_to(x, y, z)    # move the gripper to coordinates in mm (z positive = down)
-- grip_open()
-- grip_close()
-- wait(seconds)
-- move_safe()          # move to a predefined safe park position
+Your job is to produce a plan of high‑level actions. The Z axis (height) is handled automatically.
+Available actions:
+- move_to(x, y)   : move the gripper to the given XY coordinates at a safe travel height.
+- pick()           : lower the gripper, close it, and raise back to safe height.
+- place()          : lower the gripper, open it, and raise back to safe height.
+- move_safe()      : move to the predefined safe park position.
 
-Coordinates are relative to the robot's home position.
-Output only a JSON array of actions, like:
+All coordinates are in mm, relative to the robot's home position.
+Output only a JSON array of actions.
+
+Example:
 [
-  {"action": "move_to", "x": 100, "y": 50, "z": 20},
-  {"action": "grip_close"},
-  {"action": "move_to", "x": 0, "y": 0, "z": 50},
-  {"action": "grip_open"}
+  {"action": "move_to", "x": 100, "y": 50},
+  {"action": "pick"},
+  {"action": "move_to", "x": 0, "y": 0},
+  {"action": "place"},
+  {"action": "move_safe"}
 ]
 
-If the scene contains ArUco markers, you can refer to them by ID, e.g., "place on marker 5".
-Estimate coordinates from the scene description. Assume all objects are on the table (z = 0) and pick height is z = -5.
-Be conservative with movements. Do not include any commentary, only the JSON array.
+Important:
+- If no object in the scene plausibly matches the user's request, output only a single move_safe action.
+- Do NOT output any commentary, only the JSON array.
 """
 
 FEW_SHOT_USER = """
-Scene: A red cube sits at the center, a blue box is on the left side near marker ID 3.
-Task: Pick up the red cube and place it on the blue box.
+Scene: A red cube at (-50, 30), a blue box at (120, -80).
+Task: Pick the red cube and place it on the blue box.
 """
 
 FEW_SHOT_ASSISTANT = """[
-  {"action": "move_to", "x": 0, "y": 0, "z": -5},
-  {"action": "grip_close"},
-  {"action": "move_to", "x": -150, "y": 80, "z": 20},
-  {"action": "grip_open"}
+  {"action": "move_to", "x": -50, "y": 30},
+  {"action": "pick"},
+  {"action": "move_to", "x": 120, "y": -80},
+  {"action": "place"}
 ]"""

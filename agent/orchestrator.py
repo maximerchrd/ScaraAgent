@@ -178,22 +178,46 @@ class AgentOrchestrator:
                 if action == "move_to":
                     x = step["x"]
                     y = step["y"]
-                    z = step["z"]
-                    self.robot.move_to_xyz(x, y, z, block=True)
-                elif action == "grip_close":
-                    self.robot.gripper_close()
-                    time.sleep(0.5)
-                elif action == "grip_open":
-                    self.robot.gripper_open()
-                    time.sleep(0.5)
-                elif action == "wait":
-                    time.sleep(step.get("seconds", 1))
+                    # Move to XY at safe travel height
+                    self.robot.move_to_xyz(x, y, config.robot.safe_z_mm, block=True)
                 elif action == "move_safe":
-                    logging.info("Executing move_safe to park position.")
                     self.robot.move_to_xyz(
                         config.robot.park_x_mm,
                         config.robot.park_y_mm,
-                        config.robot.park_z_mm,
+                        config.robot.safe_z_mm,    # park at safe height
+                        block=True
+                    )
+                elif action == "pick":
+                    # Lower to pick height
+                    self.robot.move_to_xyz(
+                        self.robot.get_work_position()[0],
+                        self.robot.get_work_position()[1],
+                        config.robot.pick_z_mm,
+                        block=True
+                    )
+                    # Close gripper
+                    self.robot.gripper_close()
+                    time.sleep(0.5)
+                    # Raise back to safe height
+                    self.robot.move_to_xyz(
+                        self.robot.get_work_position()[0],
+                        self.robot.get_work_position()[1],
+                        config.robot.safe_z_mm,
+                        block=True
+                    )
+                elif action == "place":
+                    self.robot.move_to_xyz(
+                        self.robot.get_work_position()[0],
+                        self.robot.get_work_position()[1],
+                        config.robot.pick_z_mm,
+                        block=True
+                    )
+                    self.robot.gripper_open()
+                    time.sleep(0.5)
+                    self.robot.move_to_xyz(
+                        self.robot.get_work_position()[0],
+                        self.robot.get_work_position()[1],
+                        config.robot.safe_z_mm,
                         block=True
                     )
                 else:
