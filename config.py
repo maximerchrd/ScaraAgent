@@ -65,6 +65,11 @@ class RobotConfig:
     safe_z_mm: float = 20.0      # travel height (clears all objects)
     pick_z_mm: float = 0.0      # height for gripping / releasing
 
+    # Z sag correction coefficients (2nd order polynomial)
+    # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
+    z_correction_coeffs: tuple = (-70.483621, 0.217447, -0.090760,
+                                   -0.000162, -0.000007, 0.000164)
+
 @dataclass
 class VisionConfig:
     camera_index: Any = "http://10.210.236.252:8080/video"
@@ -74,7 +79,7 @@ class VisionConfig:
 
     # ArUco
     aruco_dict_name: str = "DICT_4X4_50"
-    marker_size_mm: float = 50.0      # side length of physical marker
+    marker_size_mm: float = 100.0      # side length of physical marker
     camera_matrix: Any = None         # fill with your calibration
     dist_coeffs: Any = None
 

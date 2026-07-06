@@ -42,19 +42,19 @@ class JogPanel(ctk.CTkFrame):
         self.pitch_up_btn.bind("<ButtonPress-1>", lambda e: self.parent_app._pitch_up())
         self.pitch_up_btn.bind("<ButtonRelease-1>", lambda e: self.parent_app._pitch_stop())
 
-        # Gripper section
-        ctk.CTkLabel(self, text="Gripper", font=("Arial", 13, "bold")).pack(pady=(10, 2))
-        gripper_frame = ctk.CTkFrame(self, fg_color="transparent")
-        gripper_frame.pack(pady=5)
-        ctk.CTkButton(gripper_frame, text="Open (Q)", width=80,
-                       fg_color="#E67E22", hover_color="#D35400",
-                       command=self.parent_app._gripper_open).pack(side="left", padx=5)
-        ctk.CTkButton(gripper_frame, text="Close (E)", width=80,
-                       fg_color="#2C3E50", hover_color="#1A252F",
-                       command=self.parent_app._gripper_close).pack(side="left", padx=5)
+        # Gripper – compact row
+        gripper_row = ctk.CTkFrame(self.btn_frame, fg_color="transparent")
+        gripper_row.grid(row=5, column=0, columnspan=3, pady=5)
+        ctk.CTkLabel(gripper_row, text="Gripper", width=180, anchor="w").pack(side="left", padx=10)
+        ctk.CTkButton(gripper_row, text="Open", width=45,
+                      fg_color="#E67E22", hover_color="#D35400",
+                      command=self.parent_app._gripper_open).pack(side="left", padx=5)
+        ctk.CTkButton(gripper_row, text="Close", width=45,
+                      fg_color="#2C3E50", hover_color="#1A252F",
+                      command=self.parent_app._gripper_close).pack(side="left", padx=5)
 
-        ctk.CTkLabel(self, text="Keyboard shortcuts active when window focused.",
-                     text_color="gray", font=("Arial", 10)).pack(side="bottom", pady=10)
+        #ctk.CTkLabel(self, text="Keyboard shortcuts active when window focused.",
+        #            text_color="gray", font=("Arial", 10)).pack(side="bottom", pady=10)
 
         # Cartesian Move
         self._create_cartesian_move()

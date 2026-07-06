@@ -9,6 +9,7 @@ import time
 import threading
 from robot.kinematics import xyz_to_joints, joints_to_xyz
 from utils.safe_queue import SafeQueue
+from config import config
 
 class RobotController:
     def __init__(self, serial_comm, queue=None):
@@ -36,6 +37,8 @@ class RobotController:
         # Polling thread for position cache
         self._poll_thread = None
         self._stop_poll = False
+
+        self._z_coeffs = config.robot.z_correction_coeffs
 
     # ---------- Connection helpers ----------
     def connect(self, port):
@@ -90,11 +93,14 @@ class RobotController:
     def set_speed(self, speed):
         self.send_raw(f"SPEED {int(speed)}")
 
-    def move_to_xyz(self, x_mm, y_mm, z_mm, block=False):
+    def move_to_xyz(self, x_mm, y_mm, z_mm=None, use_z_correction=True, block=False):
         """
         Move the tool to work coordinates (relative to zero).
         If block=True, wait until the move is likely finished (simulated).
         """
+        if use_z_correction:
+            z_mm = self.get_table_z(x_mm, y_mm) + z_mm
+        
         # Convert to native mm
         if self.has_zero:
             x_native = x_mm + self.zero_mm[0]
@@ -170,3 +176,8 @@ class RobotController:
         self._stop_polling()
         if self.is_connected():
             self.disconnect()
+
+    def get_table_z(self, x_mm, y_mm):
+        """Return Z (work coords) to touch the table at (x_mm, y_mm)."""
+        c = self._z_coeffs
+        return c[0] + c[1]*x_mm + c[2]*y_mm + c[3]*x_mm**2 + c[4]*y_mm**2 + c[5]*x_mm*y_mm
