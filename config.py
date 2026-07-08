@@ -37,7 +37,7 @@ class RobotConfig:
     link2_length: float = 327.5       # forearm length (mm)
     steps_per_deg_j1: float = 139.31
     steps_per_deg_j2: float = 63.83
-    z_steps_per_mm: float = 226.63 
+    z_steps_per_mm: float = 200.218
 
     # Default joint limits
     j1_min: float = -150.0
@@ -62,7 +62,7 @@ class RobotConfig:
     park_y_mm: float = -460.0
     park_z_mm: float = 10.0
 
-    safe_z_mm: float = 20.0      # travel height (clears all objects)
+    safe_z_mm: float = 25.0      # travel height (clears all objects)
     pick_z_mm: float = 0.0      # height for gripping / releasing
 
     # Z sag correction coefficients (2nd order polynomial)

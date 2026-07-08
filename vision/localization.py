@@ -4,6 +4,8 @@ import numpy as np
 import threading
 import time
 from vision.aruco_detector import detect_aruco
+from pathlib import Path
+import logging
 
 class MarkerLocalizer:
     def __init__(self, marker_size_mm=50.0):
@@ -48,15 +50,29 @@ class MarkerLocalizer:
       return (obj_x, obj_y)
     def compute_global_homography(self, detected_markers):
         """
-        Compute a single homography matrix from all detected markers.
+        Compute a homography matrix from pre‑calibrated file (if present)
+        or fall back to static marker positions.
+
         detected_markers: dict {marker_id: corners (4x2 numpy array)}
         Returns: homography matrix (3x3) or None if insufficient points.
         """
+
+        # --- Try the robot‑calibrated homography first ---
+        calibrated_path = Path("calib_homography.npy")
+        if calibrated_path.exists():
+            try:
+                H = np.load(calibrated_path)
+                if H.shape == (3, 3):
+                    logging.info("Using pre‑calibrated homography from file.")
+                    return H
+            except Exception as e:
+                logging.warning(f"Could not load calibrated homography: {e}")
+
+        # --- Fallback: compute from visible markers ---
         pixel_points = []
         world_points = []
 
         for marker_id, corners_px in detected_markers.items():
-            # Get physical position of corner 0 from config
             if marker_id not in self.markers:
                 continue
             pos = self.markers[marker_id]
@@ -64,11 +80,6 @@ class MarkerLocalizer:
             y0 = pos["y"]
             size = self.marker_size_mm
 
-            # Physical corners (assume marker is axis‑aligned)
-            # corner 0: (x0, y0)
-            # corner 1: (x0 + size, y0)
-            # corner 2: (x0, y0 - size)   [since y increases downward in image, but robot y is up]
-            # corner 3: (x0 + size, y0 - size)
             physical_corners = np.array([
                 [x0, y0],
                 [x0 + size, y0],
@@ -76,22 +87,20 @@ class MarkerLocalizer:
                 [x0 + size, y0 - size]
             ], dtype=np.float32)
 
-            # Pixel corners (from detection)
             px_corners = corners_px.astype(np.float32)
 
-            # Append all 4 corners to the point lists
             pixel_points.append(px_corners)
             world_points.append(physical_corners)
 
         if not pixel_points:
+            logging.warning("No markers available for homography fallback.")
             return None
 
-        # Stack all points into single arrays
         pixel_points = np.vstack(pixel_points)
         world_points = np.vstack(world_points)
 
-        # Compute homography (at least 4 points needed)
         H, _ = cv2.findHomography(pixel_points, world_points, cv2.RANSAC, 3.0)
+        logging.info("Using marker‑based homography (fallback).")
         return H
 
 class MarkerCalibrator:

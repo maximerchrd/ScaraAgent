@@ -25,7 +25,7 @@ class SerialComm:
             self.port = port
         if not self.port:
             raise ValueError("No port specified")
-        self.ser = serial.Serial(self.port, self.baudrate, timeout=self.timeout)
+        self.ser = serial.Serial(self.port, self.baudrate, timeout=self.timeout, dsrdtr=False)
         time.sleep(2)          # Allow Arduino/GRBL to reset
         self.ser.reset_input_buffer()
         self._running = True
