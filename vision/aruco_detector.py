@@ -11,6 +11,8 @@ def detect_aruco(frame, dictionary_name="DICT_4X4_50", camera_matrix=None, dist_
     """
     aruco_dict = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary_name))
     parameters = cv2.aruco.DetectorParameters()
+    parameters.polygonalApproxAccuracyRate = 0.01
+    parameters.errorCorrectionRate = 0.8
     corners, ids, _ = cv2.aruco.detectMarkers(frame, aruco_dict, parameters=parameters)
 
     markers = []

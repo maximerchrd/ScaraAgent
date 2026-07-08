@@ -40,21 +40,48 @@ Identify and point to up to 15 distinct physical objects you can see (tools, par
 For each object, provide a short descriptive name (e.g., "red cube", "blue screwdriver", "metal bracket", "black box").
 Ignore ArUco markers — only point to actual objects that could be manipulated.
 Return ONLY a JSON array like: [{"point": [y, x], "label": "descriptive name"}, ...]
-Points are [y, x] normalized 0-1000."""
+Points are [y, x] normalized 0-1000.
+Do NOT include any other text, markdown, or formatting. Output ONLY the JSON array."""
         
         response_text = self.model.generate_content([prompt, self._to_pil(image)]).text
 
         logging.info(f"Gemini VLM raw response:\n{response_text}")
+        
+        # Remove code fences
+        json_str = re.sub(r'```json|```', '', response_text).strip()
+
+        # Try full parse first
         try:
-            import re, json
-            json_str = re.sub(r'```json|```', '', response_text).strip()
             objects = json.loads(json_str)
             if isinstance(objects, list):
-                # Extract 'point' and 'label' only
-                return [{"point": obj["point"], "label": obj["label"]} for obj in objects if "point" in obj and "label" in obj]
-        except Exception as e:
-            logging.warning(f"Gemini Robotics-ER parse failed: {e}\nResponse: {response_text}")
-        return []
+                return [{"point": obj["point"], "label": obj["label"]} 
+                        for obj in objects if "point" in obj and "label" in obj]
+        except json.JSONDecodeError:
+            pass
+
+        # Fallback: extract individual objects with regex
+        objects = []
+        # Matches {"point": [...], "label": "..."}
+        pattern = r'\{\s*"point"\s*:\s*\[([^\]]*)\]\s*,\s*"label"\s*:\s*"([^"]*)"\s*\}'
+        for match in re.finditer(pattern, response_text):
+            point_str = match.group(1)
+            label = match.group(2)
+            try:
+                # point may have 2 values [y, x] or 4 values [y1, x1, y2, x2]
+                coords = [float(x.strip()) for x in point_str.split(",")]
+                if len(coords) >= 2:
+                    # If 4 values, use centre
+                    if len(coords) == 4:
+                        y = (coords[0] + coords[2]) / 2
+                        x = (coords[1] + coords[3]) / 2
+                    else:
+                        y, x = coords[0], coords[1]
+                    objects.append({"point": [y, x], "label": label})
+            except ValueError:
+                continue
+
+        logging.info(f"Extracted {len(objects)} objects via regex fallback")
+        return objects
 
     def _to_pil(self, image):
         from PIL import Image

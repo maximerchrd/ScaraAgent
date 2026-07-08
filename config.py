@@ -62,7 +62,7 @@ class RobotConfig:
     park_y_mm: float = -460.0
     park_z_mm: float = 10.0
 
-    safe_z_mm: float = 25.0      # travel height (clears all objects)
+    safe_z_mm: float = 60.0      # travel height (clears all objects)
     pick_z_mm: float = 0.0      # height for gripping / releasing
 
     # Z sag correction coefficients (2nd order polynomial)

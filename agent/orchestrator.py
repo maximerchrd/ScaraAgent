@@ -81,11 +81,6 @@ class AgentOrchestrator:
                 markers = detect_aruco(frame)
                 detected_markers = {m["id"]: m["corners"] for m in markers}
 
-            if not detected_markers:
-                logging.warning("No ArUco markers visible – cannot localize objects.")
-                self.queue.put({"type": "agent_error", "data": "No markers in view"})
-                return
-
             # 3. Compute global homography from all visible markers
             localizer = MarkerLocalizer()
             H = localizer.compute_global_homography(detected_markers)
