@@ -17,22 +17,44 @@ PROJECT_DESCRIPTION = """
 # This is a 5‑DOF SCARA robot control application evolving into an agentic system.
 # The robot uses G‑code over serial, with a Python GUI (customtkinter).
 #
-# Current state:
+# Current capabilities:
 #   - Manual jog control (joints + Cartesian XYZ)
 #   - Live position feedback: endswitch monitoring, homing, emergency stop
 #   - Gripper control (open/close with timed stops)
-#   - Top‑down arm visualization on canvas (default pose drawn at startup)
-#   - Serial communication via pyserial (queue‑based, non‑starving)
-#   - Webcam feed with ArUco marker detection (vision/camera.py, vision/aruco_detector.py)
-#   - Marker‑based object localisation: taught marker positions stored in config.py,
-#     localiser maps pixel coordinates to real‑world robot coordinates (vision/localization.py)
-#   - Zeroing: set work coordinate origin on a reference marker after homing
+#   - Top‑down arm visualization on canvas
+#   - Serial communication via pyserial (queue‑based)
+#   - Webcam feed with ArUco marker detection and marker‑based homography
+#   - Basic agent loop: VLM scene description → LLM plan → execution
 #
-# Goal / work‑in‑progress:
-#   - Integrate Gemini Robotics ER (VLM) to describe the scene
-#   - Integrate ChatGPT‑OSS 120B (LLM) to reason about the scene and produce action plans
-#   - Orchestrator agent converts LLM plans into robot G‑code commands
-#   - GUI panels for camera view and agent prompt/response
+# Agentic enhancements (phased):
+#   Phase 1 – Iterative VLM questioning:
+#       The LLM examines the VLM’s first scene description, identifies missing/ambiguous
+#       objects, and formulates targeted follow‑up questions to the VLM (cheap model).
+#       This yields a reliable world model before planning.
+#
+#   Phase 2 – Closed‑loop verification & recovery:
+#       After every pick/place, a verification image is taken and the VLM is asked to
+#       confirm the expected state change. If verification fails, the LLM generates a
+#       repair plan.
+#
+#   Phase 3 – Escalation to Gemini Robotics ER:
+#       When confidence is low (empty results, contradictions, or repeated verification
+#       failures), the full image is sent to the expensive but powerful Gemini Robotics ER
+#       model for high‑accuracy perception. This keeps costs down while guaranteeing
+#       accuracy for challenging scenes.
+#
+#   Phase 4 – Persistent spatial memory & hierarchical planning:
+#       A scene graph (object → coordinate) is maintained and updated after each action.
+#       The LLM uses it for multi‑step planning without re‑detection. Complex tasks are
+#       broken into sub‑goals by a hierarchical planner, which simulates geometric
+#       constraints before committing to actions.
+#
+#   Task Library:
+#       A collection of predefined, parameterised complex tasks (e.g., “sort objects by
+#       colour”, “build a tower”) that can be invoked with a simple user command.
+#       Each task provides detailed constraints, preferred object lists, and even
+#       pre‑recorded motion primitives (like “home”, “go to drop‑off”) to reduce LLM
+#       inference time and improve reliability.
 #
 # Architecture:
 #   - gui/        — all UI panels and widgets

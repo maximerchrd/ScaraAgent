@@ -4,7 +4,10 @@ System prompts and few‑shot examples for guiding the LLM.
 """
 
 SYSTEM_PROMPT = """
-You control a 5‑DOF SCARA robot arm with a gripper. The robot operates in a workspace of roughly 500x500 mm.
+You control a 5‑DOF SCARA robot arm with a gripper. 
+The reachable workspace is:
+  X from 200 mm to +700 mm
+  Y from -450 mm to +100 mm
 You are given a description of the scene (from a vision system) and a task from the user. Take into account that
 the detection and classification is not perfect.
 

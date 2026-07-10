@@ -13,15 +13,16 @@ class ChatGPTOSS:
             "Authorization": f"Bearer {config.llm.chatgpt_api_key}"
         }
 
-    def chat(self, messages, temperature=0.6):    # recommended 0.5‑0.7
+    def chat(self, messages, temperature=0.6, include_reasoning=True):
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_completion_tokens": 4096,        # increased for reasoning
+            "max_completion_tokens": 4096,
             "top_p": 0.95,
-            "include_reasoning": True             # explicit, though default is true
         }
+        if include_reasoning:
+            payload["include_reasoning"] = True
         try:
             resp = requests.post(
                 self.endpoint,

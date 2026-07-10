@@ -82,7 +82,7 @@ CAMERA_CALIB_GRID = [
     (650,  -50, 10.0),
 ]
 
-MARKER_OFFSET_ALONG = 62.0          # mm from TCP along second link to marker centre
+MARKER_OFFSET_ALONG = 64.0          # mm from TCP along second link to marker centre
 CALIB_MARKER_ID = 5                 # ArUco ID of gripper marker
 CALIB_SETTLE_TIME = 1.0             # seconds after each move
 CALIB_MAX_RETRIES = 3

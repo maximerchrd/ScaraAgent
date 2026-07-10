@@ -16,6 +16,7 @@ from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSIST
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
 from config import config
+from agent.perception import PerceptionManager
 
 
 class AgentOrchestrator:
@@ -26,8 +27,10 @@ class AgentOrchestrator:
         self.queue = queue
         self.agent_queue = agent_queue
         self.gemini = GeminiER(api_key=gemini_api_key)
-        self.llm = ChatGPTOSS(endpoint=chatgpt_endpoint)
+        self.llm = ChatGPTOSS(endpoint=chatgpt_endpoint, model=config.llm.planner_model)
+        critic_llm = ChatGPTOSS(endpoint=chatgpt_endpoint, model=config.llm.critic_model)
         self.calibrator = calibrator
+        self.perception = PerceptionManager(self.gemini, critic_llm, queue=self.queue)
 
         self.running = False
         self.thread = None
@@ -89,10 +92,10 @@ class AgentOrchestrator:
                 self.queue.put({"type": "agent_error", "data": "Homography computation failed"})
                 return
 
-            # 4. Ask Gemini for object pixel locations (normalized 0-1000, [y, x])
-            objects = self.gemini.localize_objects(frame)
+            # 4. Iterative VLM‑LLM perception loop
+            objects = self.perception.perceive(frame, user_prompt)
 
-            # Send raw VLM object list to GUI for overlay
+            # Send final VLM object list to GUI for overlay
             self.queue.put({"type": "vlm_objects", "data": objects})
 
             located_objects = []

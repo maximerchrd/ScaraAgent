@@ -107,8 +107,14 @@ class LLMConfig:
     chatgpt_model: str = "openai/gpt-oss-120b"
     chatgpt_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
 
+    # Model for the perception critic (cheaper, fast)
+    critic_model: str = "llama-3.3-70b-versatile"
+    planner_model: str = "openai/gpt-oss-120b"
+
     # Timeout for API calls (seconds)
     request_timeout: float = 15.0
+
+    max_vlm_iterations: int = 2   # max number of VLM calls in perception loop
 
 @dataclass
 class Config:
