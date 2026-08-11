@@ -12,7 +12,7 @@ import numpy as np
 
 from agent.gemini_er import GeminiER
 from agent.llm import ChatGPTOSS
-from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT
+from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT, PLACEMENT_REFINEMENT_PROMPT
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
 from config import config
@@ -34,6 +34,10 @@ class AgentOrchestrator:
 
         self.running = False
         self.thread = None
+
+        # NEW: store the last homography for placement refinement
+        self._last_homography = None
+        self._last_frame_shape = None
 
     def start(self):
         if self.thread is not None:
@@ -61,6 +65,74 @@ class AgentOrchestrator:
     def submit_task(self, user_prompt):
         """External method to enqueue a new prompt (called from GUI)."""
         self.agent_queue.put({"type": "agent_prompt", "data": user_prompt})
+
+    def _refine_placement(self, target_label, target_x, target_y):
+        """
+        Ask the VLM to find the best drop point on/inside the target.
+        Only called when the target appears to be a container.
+        Returns (refined_x_mm, refined_y_mm) or (None, None) on failure.
+        """
+        if self._last_homography is None or self._last_frame_shape is None:
+            return None, None
+
+        # Capture a fresh frame
+        frame = self.camera.get_latest_frame() if self.camera else None
+        if frame is None:
+            return None, None
+
+        h_img, w_img = frame.shape[:2]
+
+        prompt = (
+            "You are helping a SCARA robot place an object accurately.\n"
+            f"The robot will place an object onto/into the target '{target_label}', "
+            f"currently near world coordinates ({target_x:.0f}, {target_y:.0f}) mm.\n\n"
+            "Look at this image of the workspace. If the target has an opening, cavity, "
+            "or hollow area (like a box, bin, slot, tray with walls), point to the best "
+            "location *inside* that cavity where the object should be dropped.\n"
+            "If the target is a flat surface without an opening, point to its centre.\n"
+            "Return ONLY a JSON array with exactly one object:\n"
+            "[{\"point\": [y, x], \"label\": \"placement_target\"}]\n"
+            "Points are [y, x] normalized 0-1000.\n"
+            "Do NOT include any other text, markdown, or formatting."
+        )
+
+        try:
+            result = self.gemini.localize_objects(frame, prompt=prompt)
+            if result and len(result) > 0:
+                refined_point = result[0]["point"]   # [y, x] normalized 0-1000
+                px_x = (refined_point[1] / 1000.0) * w_img
+                px_y = (refined_point[0] / 1000.0) * h_img
+
+                # After computing refined_point and px_x, px_y:
+                if self.queue:
+                    self.queue.put({
+                        "type": "placement_marker",
+                        "data": {"pixel": [px_x, px_y], "label": f"drop {target_label}"}
+                    })
+
+                H = self._last_homography
+                pt_pixel = np.array([px_x, px_y, 1.0])
+                pt_world = H @ pt_pixel
+                pt_world = pt_world / pt_world[2]
+                x_mm, y_mm = pt_world[0], pt_world[1]
+
+                if (config.vision.workspace_x_min <= x_mm <= config.vision.workspace_x_max and
+                    config.vision.workspace_y_min <= y_mm <= config.vision.workspace_y_max):
+                    logging.info(f"Placement refined for '{target_label}': "
+                                 f"({target_x:.1f}, {target_y:.1f}) → ({x_mm:.1f}, {y_mm:.1f})")
+                    self.queue.put({"type": "agent_reasoning",
+                                    "data": f"🎯 Refined placement for '{target_label}' → inside cavity"})
+                    return x_mm, y_mm
+        except Exception as e:
+            logging.warning(f"Placement refinement failed: {e}")
+
+        return None, None
+
+    def _is_container(self, label):
+        """Return True if the label suggests a container with an opening."""
+        container_keywords = ["box", "bin", "tray", "cup", "slot", "holder", "container", "basket"]
+        label_lower = label.lower()
+        return any(kw in label_lower for kw in container_keywords)
 
     def _process_task(self, user_prompt):
         """Full pipeline: see → describe → reason → act."""
@@ -91,6 +163,10 @@ class AgentOrchestrator:
                 logging.error("Failed to compute homography from visible markers.")
                 self.queue.put({"type": "agent_error", "data": "Homography computation failed"})
                 return
+
+            # NEW: store for later use in placement refinement
+            self._last_homography = H
+            self._last_frame_shape = (h_img, w_img)
 
             # 4. Iterative VLM‑LLM perception loop
             objects = self.perception.perceive(frame, user_prompt)
@@ -204,20 +280,29 @@ class AgentOrchestrator:
                         block=True
                     )
                 elif action == "place":
-                    self.robot.move_to_xyz(
-                        self.robot.get_work_position()[0],
-                        self.robot.get_work_position()[1],
-                        config.robot.pick_z_mm,
-                        block=True
-                    )
+                    # Get current target XY (from preceding move_to)
+                    place_x = self.robot.get_work_position()[0]
+                    place_y = self.robot.get_work_position()[1]
+                    orig_x, orig_y = place_x, place_y      # ← save originals
+
+                    # Refine placement if target is a container
+                    target_label = step.get("target", "the target")
+                    if self._is_container(target_label):
+                        refined_x, refined_y = self._refine_placement(
+                            target_label, place_x, place_y
+                        )
+                        if refined_x is not None and refined_y is not None:
+                            place_x, place_y = refined_x, refined_y
+                            logging.info(f"📍 Placement shift for '{target_label}': "
+                                        f"Δx={place_x - orig_x:.1f}mm, Δy={place_y - orig_y:.1f}mm")
+                        else:
+                            logging.info(f"⚠️  Refinement failed for '{target_label}' — using original coordinates")
+
+                    # Move to (possibly refined) XY at place height
+                    self.robot.move_to_xyz(place_x, place_y, config.robot.place_z_mm, block=True)
                     self.robot.gripper_open()
                     time.sleep(0.5)
-                    self.robot.move_to_xyz(
-                        self.robot.get_work_position()[0],
-                        self.robot.get_work_position()[1],
-                        config.robot.safe_z_mm,
-                        block=True
-                    )
+                    self.robot.move_to_xyz(place_x, place_y, config.robot.safe_z_mm, block=True)
                 else:
                     logging.warning(f"Unknown action: {action}")
 

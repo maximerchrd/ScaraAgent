@@ -41,6 +41,9 @@ class CameraPanel(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(self, text="No frame", text_color="gray")
         self.status_label.pack(pady=2)
 
+        # (px_x, px_y, label)
+        self.placement_marker = None
+
         # Start polling
         self._poll_frame()
 
@@ -81,6 +84,13 @@ class CameraPanel(ctk.CTkFrame):
             if self.show_calibrated_var.get() and self.calibrator and self.calibrator.is_calibrated:
                 self._draw_calibrated_markers(frame)
                 status_parts.append("Calib ✓")
+
+            if self.placement_marker:
+                px, py, lbl = self.placement_marker
+                cv2.drawMarker(frame, (int(px), int(py)), (255, 0, 255), 
+                            markerType=cv2.MARKER_CROSS, markerSize=20, thickness=2)
+                cv2.putText(frame, lbl, (int(px)+10, int(py)-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
 
             # Resize for display
             display_frame = resize_frame(frame, width=self.display_width, height=self.display_height)
@@ -123,3 +133,7 @@ class CameraPanel(ctk.CTkFrame):
             cx, cy = pts.mean(axis=0).astype(int)
             cv2.putText(frame, str(marker_id), (cx - 10, cy - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+    def set_placement_marker(self, px_x, px_y, label):
+        """Store a placement refinement marker to overlay on the next frame."""
+        self.placement_marker = (px_x, px_y, label)

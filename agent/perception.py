@@ -120,28 +120,33 @@ class PerceptionManager:
             self._send_reasoning(f"⚠️  Critic returned empty response — using fallback question.")
             return self._fallback_question(task)
 
-        # Try to extract JSON
+        # Try direct parse first (the LLM should output valid JSON)
+        try:
+            critique = json.loads(content)
+            self._send_reasoning(f"   ↳ Critic: {json.dumps(critique, indent=2)}")
+            return critique
+        except json.JSONDecodeError:
+            pass   # fall through to regex as a safety net
+
+        # Fallback: regex extraction (kept for malformed responses)
         import re
-        
-        # First try: find JSON object with non-greedy match (handles simple objects)
         json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
         if not json_match:
-            # Second try: greedy match for nested objects (less reliable but catches more)
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        
+
         if json_match:
             try:
                 critique = json.loads(json_match.group(0))
-                self._send_reasoning(f"   ↳ Critic: {json.dumps(critique, indent=2)}")
+                self._send_reasoning(f"   ↳ Critic (regex): {json.dumps(critique, indent=2)}")
                 return critique
             except json.JSONDecodeError:
-                logging.warning(f"Failed to parse LLM critique JSON: {content[:300]}")
-                self._send_reasoning(f"⚠️  Couldn't parse critic response — using fallback question.")
+                logging.warning(f"Failed to parse LLM critique JSON even with regex: {content[:300]}")
+                self._send_reasoning("⚠️  Couldn't parse critic response — using fallback question.")
                 return self._fallback_question(task)
-        
+
         # No JSON found at all
         logging.warning(f"No JSON found in critic response: {content[:300]}")
-        self._send_reasoning(f"⚠️  No JSON in critic response — using fallback question.")
+        self._send_reasoning("⚠️  No JSON in critic response — using fallback question.")
         return self._fallback_question(task)
 
 
@@ -159,20 +164,25 @@ class PerceptionManager:
         logging.info(f"Using fallback question: {question}")
         return {"sufficient": False, "question": question}
 
-    def _merge_objects(self, existing, new, proximity_threshold_mm=15.0):
-      merged = []
-      for obj in new:
-          # Check if this new object is near an existing one
-          is_duplicate = False
-          for ex in existing:
-              dx = obj.get("x_mm", 0) - ex.get("x_mm", 0)
-              dy = obj.get("y_mm", 0) - ex.get("y_mm", 0)
-              if (dx**2 + dy**2)**0.5 < proximity_threshold_mm:
-                  is_duplicate = True
-                  break
-          if not is_duplicate:
-              merged.append(obj)
-      return existing + merged
+    def _merge_objects(self, existing, new, pixel_threshold=40):
+        merged = existing.copy()
+        for new_obj in new:
+            new_pt = new_obj.get("point")
+            if not new_pt:
+                continue
+            duplicate = False
+            for i, ex_obj in enumerate(merged):
+                ex_pt = ex_obj.get("point")
+                if not ex_pt:
+                    continue
+                dist = ((new_pt[0] - ex_pt[0])**2 + (new_pt[1] - ex_pt[1])**2)**0.5
+                if dist < pixel_threshold:
+                    merged[i] = new_obj        # replace with newer label
+                    duplicate = True
+                    break
+            if not duplicate:
+                merged.append(new_obj)
+        return merged
 
     def _log_objects(self, objects):
         for obj in objects:

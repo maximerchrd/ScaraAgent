@@ -55,12 +55,34 @@ class GeminiER:
         # Remove code fences
         json_str = re.sub(r'```json|```', '', response_text).strip()
 
+        # Fix common JSON errors: missing closing braces
+        open_braces = json_str.count('{')
+        close_braces = json_str.count('}')
+        if open_braces > close_braces:
+            json_str += '}' * (open_braces - close_braces)
+        # Fix missing closing brackets
+        open_brackets = json_str.count('[')
+        close_brackets = json_str.count(']')
+        if open_brackets > close_brackets:
+            json_str += ']' * (open_brackets - close_brackets)
+
         # Try full parse first
         try:
             objects = json.loads(json_str)
             if isinstance(objects, list):
-                return [{"point": obj["point"], "label": obj["label"]} 
-                        for obj in objects if "point" in obj and "label" in obj]
+                parsed = []
+                for obj in objects:
+                    # Handle both "point" and "box_2d" formats
+                    if "point" in obj and "label" in obj:
+                        parsed.append({"point": obj["point"], "label": obj["label"]})
+                    elif "box_2d" in obj and "label" in obj:
+                        # box_2d is [x1, y1, x2, y2] — use center, convert to [y, x]
+                        x1, y1, x2, y2 = obj["box_2d"]
+                        x = (x1 + x2) / 2
+                        y = (y1 + y2) / 2
+                        parsed.append({"point": [y, x], "label": obj["label"]})
+                if parsed:
+                    return parsed
         except json.JSONDecodeError:
             pass
 
@@ -72,16 +94,36 @@ class GeminiER:
             point_str = match.group(1)
             label = match.group(2)
             try:
-                # point may have 2 values [y, x] or 4 values [y1, x1, y2, x2]
                 coords = [float(x.strip()) for x in point_str.split(",")]
                 if len(coords) >= 2:
-                    # If 4 values, use centre
                     if len(coords) == 4:
                         y = (coords[0] + coords[2]) / 2
                         x = (coords[1] + coords[3]) / 2
                     else:
                         y, x = coords[0], coords[1]
                     objects.append({"point": [y, x], "label": label})
+            except ValueError:
+                continue
+
+        # Also try box_2d pattern in regex fallback
+        box_pattern = r'\{\s*"box_2d"\s*:\s*\[([^\]]*)\]\s*,\s*"label"\s*:\s*"([^"]*)"\s*\}'
+        for match in re.finditer(box_pattern, response_text):
+            box_str = match.group(1)
+            label = match.group(2)
+            try:
+                coords = [float(x.strip()) for x in box_str.split(",")]
+                if len(coords) == 4:
+                    x = (coords[0] + coords[2]) / 2
+                    y = (coords[1] + coords[3]) / 2
+                    # Check if we already have something very close
+                    duplicate = False
+                    for obj in objects:
+                        dist = ((obj["point"][0] - y)**2 + (obj["point"][1] - x)**2)**0.5
+                        if dist < 40:
+                            duplicate = True
+                            break
+                    if not duplicate:
+                        objects.append({"point": [y, x], "label": label})
             except ValueError:
                 continue
 

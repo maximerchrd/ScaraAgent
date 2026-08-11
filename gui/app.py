@@ -394,6 +394,11 @@ class ScaraAgentApp(ctk.CTk):
                     if hasattr(self, 'agent_panel') and self.agent_panel:
                         self.agent_panel.display_response(data)
                     logging.info(f"GUI: {data}")
+                elif msg_type == "placement_marker":
+                    if hasattr(self, 'camera_panel') and self.camera_panel:
+                        self.camera_panel.set_placement_marker(
+                            data["pixel"][0], data["pixel"][1], data["label"]
+                        )
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 
