@@ -44,6 +44,8 @@ class CameraPanel(ctk.CTkFrame):
         # (px_x, px_y, label)
         self.placement_marker = None
 
+        self.perception_points = []   # list of {"point": [y_norm, x_norm], "label": str}
+
         # Start polling
         self._poll_frame()
 
@@ -79,6 +81,10 @@ class CameraPanel(ctk.CTkFrame):
                 status_parts.append("VLM on")
             elif self.show_vlm.get():
                 status_parts.append("VLM: no objects")
+
+            # Perceive overlays (magenta)
+            if self.perception_points:
+                self._draw_perception_points(frame)
 
             # Calibrated markers overlay
             if self.show_calibrated_var.get() and self.calibrator and self.calibrator.is_calibrated:
@@ -137,3 +143,29 @@ class CameraPanel(ctk.CTkFrame):
     def set_placement_marker(self, px_x, px_y, label):
         """Store a placement refinement marker to overlay on the next frame."""
         self.placement_marker = (px_x, px_y, label)
+
+    def set_perception_points(self, points):
+        """Receive list of dicts and add them to the current overlay set."""
+        self.perception_points.extend(points)
+
+    def clear_perception_points(self):
+        """Clear all perceived point overlays."""
+        self.perception_points = []
+
+    def _draw_perception_points(self, frame):
+        """Draw perceived points (normalised [y,x] 0-1000) in magenta."""
+        h, w = frame.shape[:2]
+        for obj in self.perception_points:
+            try:
+                norm_y, norm_x = obj["point"]
+                label = obj.get("label", "?")
+            except (KeyError, ValueError):
+                continue
+
+            px_x = int((norm_x / 1000.0) * w)
+            px_y = int((norm_y / 1000.0) * h)
+
+            cv2.circle(frame, (px_x, px_y), 10, (255, 0, 255), 2)
+            cv2.circle(frame, (px_x, px_y), 2, (255, 255, 255), -1)
+            cv2.putText(frame, label, (px_x + 12, px_y - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)

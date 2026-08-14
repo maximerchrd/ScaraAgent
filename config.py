@@ -73,7 +73,7 @@ class RobotConfig:
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = "http://10.210.236.252:8080/video"
+    camera_index: Any = "http://10.194.111.127:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30
@@ -111,6 +111,7 @@ class LLMConfig:
     # Model for the perception critic (cheaper, fast)
     critic_model: str = "llama-3.3-70b-versatile"
     planner_model: str = "openai/gpt-oss-120b"
+    skill_decision_model: str = "openai/gpt-oss-20b"
 
     # Timeout for API calls (seconds)
     request_timeout: float = 15.0

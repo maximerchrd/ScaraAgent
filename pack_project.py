@@ -23,44 +23,53 @@ PROJECT_DESCRIPTION = """
 #   - Gripper control (open/close with timed stops)
 #   - Top‑down arm visualization on canvas
 #   - Serial communication via pyserial (queue‑based)
-#   - Webcam feed with ArUco marker detection and marker‑based homography
-#   - Basic agent loop: VLM scene description → LLM plan → execution
+#   - Webcam feed with ArUco marker detection (fallback) and pre‑calibrated homography from file
+#   - Agent pipeline: VLM scene description → LLM skill decision → planner → execution
+#   - Skill library (JSON) with LLM‑driven selection and escalation to main planner
+#   - Mid‑plan VLM querying via "perceive" actions (batched, auto‑converted to world mm — NOT YET TESTED)
+#   - Retry/backoff for LLM calls
 #
 # Agentic enhancements (phased):
-#   Phase 1 – Iterative VLM questioning:
-#       The LLM examines the VLM’s first scene description, identifies missing/ambiguous
-#       objects, and formulates targeted follow‑up questions to the VLM (cheap model).
-#       This yields a reliable world model before planning.
+#   Phase 1 – Iterative VLM questioning (implemented):
+#       The LLM critic examines the VLM’s first scene description, identifies missing/ambiguous
+#       objects, and formulates targeted follow‑up questions to the VLM. This yields a more
+#       reliable world model before planning.
 #
-#   Phase 2 – Closed‑loop verification & recovery:
+#   Phase 2 – Closed‑loop verification & recovery (planned, not yet implemented):
 #       After every pick/place, a verification image is taken and the VLM is asked to
 #       confirm the expected state change. If verification fails, the LLM generates a
 #       repair plan.
 #
-#   Phase 3 – Escalation to Gemini Robotics ER:
+#   Phase 3 – Escalation to Gemini Robotics ER (planned, not yet implemented):
 #       When confidence is low (empty results, contradictions, or repeated verification
-#       failures), the full image is sent to the expensive but powerful Gemini Robotics ER
-#       model for high‑accuracy perception. This keeps costs down while guaranteeing
-#       accuracy for challenging scenes.
+#       failures), the full image is sent to a more powerful VLM for high‑accuracy perception.
+#       Currently, the system escalates to the main planner LLM when the skill decision model
+#       is uncertain, but not yet to a specialised VLM.
 #
-#   Phase 4 – Persistent spatial memory & hierarchical planning:
+#   Phase 4 – Persistent spatial memory & hierarchical planning (planned, not yet implemented):
 #       A scene graph (object → coordinate) is maintained and updated after each action.
 #       The LLM uses it for multi‑step planning without re‑detection. Complex tasks are
 #       broken into sub‑goals by a hierarchical planner, which simulates geometric
 #       constraints before committing to actions.
 #
-#   Task Library:
-#       A collection of predefined, parameterised complex tasks (e.g., “sort objects by
-#       colour”, “build a tower”) that can be invoked with a simple user command.
-#       Each task provides detailed constraints, preferred object lists, and even
-#       pre‑recorded motion primitives (like “home”, “go to drop‑off”) to reduce LLM
-#       inference time and improve reliability.
+#   Skill Library (initial implementation):
+#       A JSON file (agent/skills/library.json) contains predefined skills, e.g.:
+#         - play_tic_tac_toe_on_3x3_grid
+#         - tidy_table_by_sorting_objects_into_containers
+#         - build_tower_by_stacking_objects
+#       A lightweight LLM (skill_decision_model) decides whether to use a skill, output a
+#       direct plan, or escalate to the main planner. When a skill is selected, its full
+#       instructions and geometry are injected into the planner’s context.
+#       The planner can issue "perceive" actions to query the VLM mid‑plan; consecutive
+#       perceives are batched and re‑planned once. Perceived coordinates are automatically
+#       converted from normalised image space to robot world mm (untested).
 #
 # Architecture:
 #   - gui/        — all UI panels and widgets
 #   - robot/      — kinematics, serial comm, high‑level controller, calibration
 #   - vision/     — camera thread, ArUco detection, image utilities, marker localisation
-#   - agent/      — Gemini VLM interface, LLM interface, orchestrator, prompt templates
+#   - agent/      — Gemini VLM interface, LLM interface, orchestrator, prompt templates,
+#                   perception manager, skill library
 #   - utils/      — thread‑safe queue, logging setup
 #   - config.py   — all tunable parameters in dataclasses (including marker positions)
 #   - main.py     — entry point, wires everything together

@@ -1,0 +1,40 @@
+[
+  {
+  "name": "play_tic_tac_toe_on_3x3_grid",
+  "instructions": [
+    "You must determine the current board state and the available playing pieces separately.",
+    "Do NOT assume the board is empty or already known.",
+    "",
+    "Step 1 – Perceive the board state:",
+    "Output ONE perceive action to find the grid corners and the pieces already on the board.",
+    "Store the result as 'board_state'.",
+    "",
+    "Use this prompt:",
+    "'Look at the tic-tac-toe board. Find the four grid corners and the pieces already on the board. Points are [y, x] normalized 0-1000. Return ONLY JSON: {\"grid_corners\": {\"top_left\": [y,x], \"top_right\": [y,x], \"bottom_left\": [y,x], \"bottom_right\": [y,x]}, \"board_pieces\": [{\"point\": [y,x], \"label\": \"...\"}]}'",
+    "",
+    "Step 2 – Determine available playing pieces:",
+    "Use the initial scene object list if it contains off-board pieces. The initial scene detection is stored in the conversation as 'Scene: Objects detected: ...'.",
+    "If the needed robot piece is not clearly visible there, output a second perceive action to find the robot's playing pieces that are NOT on the board.",
+    "Store the result as 'inventory'.",
+    "",
+    "Use a prompt like:",
+    "'Find all stepper motor pieces that are not on the tic-tac-toe board. Return ONLY JSON: [{\"point\": [y,x], \"label\": \"stepper_motor\"}]'",
+    "",
+    "Step 3 – Reason about the move:",
+    "Use board_state.board_pieces to understand the current board occupancy.",
+    "Use inventory or the initial scene object list to choose one of the robot's available pieces.",
+    "Choose an empty target cell by reasoning about the board state.",
+    "",
+    "Step 4 – Execute:",
+    "Move to the selected available piece, pick it, move to the chosen empty cell, place it, then move_safe."
+  ]
+},
+  {
+    "name": "tidy_table_by_sorting_objects_into_containers",
+    "instructions": [
+      "Identify loose objects and containers.",
+      "For each loose object, determine the matching container.",
+      "Place each object into its container one at a time."
+    ]
+  }
+]

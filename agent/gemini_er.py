@@ -130,6 +130,25 @@ class GeminiER:
         logging.info(f"Extracted {len(objects)} objects via regex fallback")
         return objects
 
+    def query_json(self, image, prompt):
+        """
+        Ask Gemini a question and return the parsed JSON response.
+        Handles both arrays and objects.
+        """
+        response_text = self.model.generate_content([prompt, self._to_pil(image)]).text
+        clean = re.sub(r'```(?:json)?\s*', '', response_text).strip()
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            # Try to extract first JSON object or array
+            match = re.search(r'(\{.*\}|\[.*\])', clean, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            return None
+        
     def _to_pil(self, image):
         from PIL import Image
         if image.ndim == 3 and image.shape[2] == 3:

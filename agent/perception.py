@@ -21,7 +21,8 @@ class PerceptionManager:
         self.critic_prompt_template = (
           "You are a perception critic for a SCARA robot.\n"
           "You are given a list of detected objects (with normalised coordinates 0‑1000) and a user task.\n"
-          "Your job is to decide whether the detected objects are sufficient to accomplish the task.\n\n"
+          "Your job is to decide whether the detected objects are sufficient to accomplish the task.\n"
+          "First make a list of detected objects to accomplish the task, then compare it to the detected objects. \n\n"
           "IMPORTANT — Semantic matching:\n"
           "The vision model often describes objects with different words than the user.\n"
           "You MUST judge whether two labels plausibly refer to the same physical object.\n"
@@ -165,23 +166,90 @@ class PerceptionManager:
         return {"sufficient": False, "question": question}
 
     def _merge_objects(self, existing, new, pixel_threshold=40):
+        """
+        Merge two lists of detected objects.
+
+        Objects are merged only when they are likely the same physical object:
+        - labels are semantically compatible
+        - distance is below pixel_threshold
+
+        Different labels are never merged, even if they are close.
+        """
+        import re
+
         merged = existing.copy()
+
+        def normalize_label(label):
+            label = label or ""
+            label = label.lower()
+            label = re.sub(r"[^a-z0-9]+", " ", label)
+            return " ".join(label.split())
+
+        def labels_compatible(a, b):
+            na = normalize_label(a)
+            nb = normalize_label(b)
+
+            if not na or not nb:
+                return False
+
+            if na == nb:
+                return True
+
+            ta = set(na.split())
+            tb = set(nb.split())
+
+            # If one is contained in the other, require high overlap.
+            smaller, larger = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+            if smaller and smaller.issubset(larger):
+                return len(smaller) / len(larger) >= 0.66
+
+            # Otherwise use token overlap.
+            intersection = ta & tb
+            if not intersection:
+                return False
+
+            jaccard = len(intersection) / len(ta | tb)
+            return jaccard >= 0.7
+
         for new_obj in new:
             new_pt = new_obj.get("point")
+            new_label = new_obj.get("label", "")
+
             if not new_pt:
                 continue
-            duplicate = False
+
+            best_idx = None
+            best_dist = pixel_threshold
+
             for i, ex_obj in enumerate(merged):
                 ex_pt = ex_obj.get("point")
+                ex_label = ex_obj.get("label", "")
+
                 if not ex_pt:
                     continue
-                dist = ((new_pt[0] - ex_pt[0])**2 + (new_pt[1] - ex_pt[1])**2)**0.5
-                if dist < pixel_threshold:
-                    merged[i] = new_obj        # replace with newer label
-                    duplicate = True
-                    break
-            if not duplicate:
+
+                if not labels_compatible(new_label, ex_label):
+                    continue
+
+                dist = (
+                    (new_pt[0] - ex_pt[0]) ** 2 +
+                    (new_pt[1] - ex_pt[1]) ** 2
+                ) ** 0.5
+
+                if dist < best_dist:
+                    best_dist = dist
+                    best_idx = i
+
+            if best_idx is not None:
+                # Keep the more descriptive label if possible.
+                old_label = merged[best_idx].get("label", "")
+                if len(normalize_label(old_label).split()) > len(normalize_label(new_label).split()):
+                    new_obj["label"] = old_label
+
+                merged[best_idx] = new_obj
+            else:
                 merged.append(new_obj)
+
         return merged
 
     def _log_objects(self, objects):

@@ -167,9 +167,9 @@ class ScaraAgentApp(ctk.CTk):
         ctk.CTkCheckBox(toggle_frame, text="Show Calibrated Markers", variable=self.show_calibrated).pack(anchor="w", pady=3)
 
         # Marker calibration button (original)
-        self.calib_btn = ctk.CTkButton(toggle_frame, text="Recalibrate", width=100,
-                                       command=self._start_calibration)
-        self.calib_btn.pack(anchor="w", pady=2)
+        #self.calib_btn = ctk.CTkButton(toggle_frame, text="Recalibrate", width=100,
+        #                               command=self._start_calibration)
+        #self.calib_btn.pack(anchor="w", pady=2)
 
         # Camera calibration button (new)
         self.calib_camera_btn = ctk.CTkButton(toggle_frame, text="Calibrate Camera", width=120,
@@ -399,6 +399,12 @@ class ScaraAgentApp(ctk.CTk):
                         self.camera_panel.set_placement_marker(
                             data["pixel"][0], data["pixel"][1], data["label"]
                         )
+                elif msg_type == "perception_overlay":
+                    if hasattr(self, 'camera_panel') and self.camera_panel:
+                        self.camera_panel.set_perception_points(data)
+                elif msg_type == "clear_perception_overlay":
+                    if hasattr(self, 'camera_panel') and self.camera_panel:
+                        self.camera_panel.clear_perception_points()
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 
