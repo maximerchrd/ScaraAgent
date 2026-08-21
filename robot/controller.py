@@ -40,6 +40,9 @@ class RobotController:
 
         self._z_coeffs = config.robot.z_correction_coeffs
 
+        self._last_yaw = 90
+        self._last_distance = None   # distance sensor mm
+
     # ---------- Connection helpers ----------
     def connect(self, port):
         self.serial_comm.connect(port)
@@ -181,3 +184,6 @@ class RobotController:
         """Return Z (work coords) to touch the table at (x_mm, y_mm)."""
         c = self._z_coeffs
         return c[0] + c[1]*x_mm + c[2]*y_mm + c[3]*x_mm**2 + c[4]*y_mm**2 + c[5]*x_mm*y_mm
+
+    def get_distance_mm(self):
+        return self._last_distance

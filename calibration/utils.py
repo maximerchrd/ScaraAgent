@@ -9,7 +9,7 @@ import math
 import numpy as np
 import cv2
 from vision.aruco_detector import detect_aruco
-from robot.kinematics import L1, L2
+from robot.kinematics import L1, L2, xyz_to_joints, STEPS_PER_DEG_J1, STEPS_PER_DEG_J2
 
 
 def marker_to_tcp(marker_x, marker_y, offset_along=62.0):
@@ -118,3 +118,107 @@ def evaluate_homography(H, data):
 def save_homography(H, filepath="calib_homography.npy"):
     np.save(filepath, H)
     logging.info(f"Homography saved to {filepath}")
+
+def collect_calibration_data_multi_marker(
+        robot, camera, grid_points,
+        marker_ids_offsets,
+        settle_time=1.0,
+        max_retries=3,
+        max_failure_ratio=0.3):
+    """
+    Collect calibration data using multiple ArUco markers on the gripper.
+
+    Parameters:
+        robot: RobotController instance
+        camera: CameraThread instance
+        grid_points: list of (x, y, z) TCP target coordinates (work coords)
+        marker_ids_offsets: dict {
+            11: {"offset": 103.5, "direction": "front"},
+            10: {"offset": 102.5, "direction": "left"},
+            12: {"offset": 101.5, "direction": "right"}
+        }
+        settle_time: seconds to wait after each move
+        max_retries: number of detection attempts per point
+        max_failure_ratio: abort if too many failures
+
+    Returns:
+        data: list of (pixel_x, pixel_y, world_x, world_y)
+        or None if too many failures.
+    """
+    data = []
+    failures = 0
+    total = len(grid_points)
+
+    logging.info(f"Starting multi-marker calibration: {total} TCP grid points")
+
+    for i, (x_tcp, y_tcp, z_tcp) in enumerate(grid_points):
+        logging.info(f"Point {i+1}/{total}: TCP ({x_tcp:.0f}, {y_tcp:.0f})")
+
+        # Move TCP directly to grid point
+        robot.move_to_xyz(x_tcp, y_tcp, z_tcp, block=True)
+        time.sleep(settle_time)
+
+        # Compute joint angles for forearm direction (using commanded TCP)
+        steps_z, steps_j1, steps_j2 = xyz_to_joints(x_tcp, y_tcp, z_tcp)
+        theta1 = math.radians(steps_j1 / STEPS_PER_DEG_J1)
+        theta2 = math.radians(steps_j2 / STEPS_PER_DEG_J2)
+
+        # Forearm unit vector
+        phi = theta1 + theta2
+        u_x = math.cos(phi)
+        u_y = math.sin(phi)
+
+        # Perpendicular vectors
+        v_left_x = -u_y
+        v_left_y =  u_x
+        v_right_x =  u_y
+        v_right_y = -u_x
+
+        detected_any = False
+        for _ in range(max_retries):
+            frame = camera.get_latest_frame()
+            if frame is None:
+                time.sleep(0.3)
+                continue
+            markers = detect_aruco(frame)
+            for m in markers:
+                mid = int(m['id'])
+                if mid in marker_ids_offsets:
+                    # Pixel center
+                    centre = m['corners'].mean(axis=0)
+                    px, py = centre[0], centre[1]
+
+                    # Compute world coordinate from offset
+                    offset_info = marker_ids_offsets[mid]
+                    offset = offset_info["offset"]
+                    direction = offset_info["direction"]
+
+                    if direction == "front":
+                        wx = x_tcp + offset * u_x
+                        wy = y_tcp + offset * u_y
+                    elif direction == "left":
+                        wx = x_tcp + offset * v_left_x
+                        wy = y_tcp + offset * v_left_y
+                    elif direction == "right":
+                        wx = x_tcp + offset * v_right_x
+                        wy = y_tcp + offset * v_right_y
+                    else:
+                        continue
+
+                    data.append((px, py, wx, wy))
+                    detected_any = True
+                    logging.info(f"  -> marker {mid} at pixel ({px:.0f}, {py:.0f}), "
+                                 f"world ({wx:.0f}, {wy:.0f})")
+            if detected_any:
+                break
+            time.sleep(0.5)
+
+        if not detected_any:
+            failures += 1
+            logging.warning(f"  -> no markers detected")
+            if failures > total * max_failure_ratio:
+                logging.error(f"Too many failures ({failures}/{total}) – aborting.")
+                return None
+
+    logging.info(f"Data collection done: {len(data)} correspondences, {failures} missed points")
+    return data

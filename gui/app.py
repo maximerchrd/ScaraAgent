@@ -22,7 +22,7 @@ from gui.panels.camera_panel import CameraPanel
 
 # Shared calibration logic (imported from calibration folder)
 from calibration.utils import (
-    collect_calibration_data,
+    collect_calibration_data_multi_marker,
     fit_homography,
     evaluate_homography,
     save_homography,
@@ -38,48 +38,48 @@ except ImportError:
 #  Camera calibration parameters (edit as needed)
 # ================================================================
 CAMERA_CALIB_GRID = [
-    (350, -420, 10.0),
-    (350, -350, 10.0),
-    (350, -275, 10.0),
-    (350, -200, 10.0),
-    (350, -125, 10.0),
-    (350,  -50, 10.0),
-    (350,  50, 10.0),
+    (350, -420, 3.0),
+    (350, -350, 3.0),
+    (350, -275, 3.0),
+    (350, -200, 3.0),
+    (350, -125, 3.0),
+    (350,  -50, 3.0),
+    (350,  50, 3.0),
 
-    (390, -420, 10.0),
-    (390, -350, 10.0),
-    (390, -275, 10.0),
-    (390, -200, 10.0),
-    (390, -125, 10.0),
-    (390,  -50, 10.0),
-    (390,  50, 10.0),
+    (390, -420, 3.0),
+    (390, -350, 3.0),
+    (390, -275, 3.0),
+    (390, -200, 3.0),
+    (390, -125, 3.0),
+    (390,  -50, 3.0),
+    (390,  50, 3.0),
 
-    (465, -420, 10.0),
-    (465, -350, 10.0),
-    (465, -275, 10.0),
-    (465, -200, 10.0),
-    (465, -125, 10.0),
-    (465,  -50, 10.0),
-    (465,  50, 10.0),
+    (465, -420, 3.0),
+    (465, -350, 3.0),
+    (465, -275, 3.0),
+    (465, -200, 3.0),
+    (465, -125, 3.0),
+    (465,  -50, 3.0),
+    (465,  50, 3.0),
 
-    (520, -420, 10.0),
-    (520, -350, 10.0),
-    (520, -275, 10.0),
-    (520, -200, 10.0),
-    (520, -125, 10.0),
-    (520,  -50, 10.0),
-    (520,  50, 10.0),
+    (520, -420, 3.0),
+    (520, -350, 3.0),
+    (520, -275, 3.0),
+    (520, -200, 3.0),
+    (520, -125, 3.0),
+    (520,  -50, 3.0),
+    (520,  50, 3.0),
 
-    (580, -350, 10.0),
-    (580, -275, 10.0),
-    (580, -200, 10.0),
-    (580, -125, 10.0),
-    (580,  -50, 10.0),
-    (580,  50, 10.0),
+    (580, -350, 3.0),
+    (580, -275, 3.0),
+    (580, -200, 3.0),
+    (580, -125, 3.0),
+    (580,  -50, 3.0),
+    (580,  50, 3.0),
 
-    (650, -200, 10.0),
-    (650, -125, 10.0),
-    (650,  -50, 10.0),
+    (650, -200, 3.0),
+    (650, -125, 3.0),
+    (650,  -50, 3.0),
 ]
 
 MARKER_OFFSET_ALONG = 64.0          # mm from TCP along second link to marker centre
@@ -108,6 +108,9 @@ class ScaraAgentApp(ctk.CTk):
         self.jog_step_linear = 50
         self.jog_step_yaw = 5
         self.current_yaw = 90  # updated by position messages
+
+        self.current_yaw = 90
+        self.current_distance = None   # distance sensor reading in mm
 
         # Internal state
         self.last_steps = None   # (z_steps, j1_steps, j2_steps)
@@ -236,12 +239,18 @@ class ScaraAgentApp(ctk.CTk):
 
     def _run_camera_calibration(self):
         try:
-            data = collect_calibration_data(
+            # Define gripper marker offsets (IDs, distances, directions)
+            marker_ids_offsets = {
+                11: {"offset": 103.5, "direction": "front"},
+                10: {"offset": 102.5, "direction": "left"},
+                12: {"offset": 101.5, "direction": "right"},
+            }
+
+            data = collect_calibration_data_multi_marker(
                 self.robot,
                 self.camera,
                 CAMERA_CALIB_GRID,
-                marker_offset_along=MARKER_OFFSET_ALONG,
-                marker_id=CALIB_MARKER_ID,
+                marker_ids_offsets=marker_ids_offsets,
                 settle_time=CALIB_SETTLE_TIME,
                 max_retries=CALIB_MAX_RETRIES
             )
@@ -411,7 +420,9 @@ class ScaraAgentApp(ctk.CTk):
         self.after(50, self.process_queue)
 
     def handle_position_update(self, data):
-        """data is a list of strings: [z_steps, j1_steps, j2_steps, yaw_angle]"""
+        """data is a list of strings:
+        [z_steps, j1_steps, j2_steps, yaw_angle, distance_mm]
+        """
         if len(data) < 3:
             return
 
@@ -420,13 +431,25 @@ class ScaraAgentApp(ctk.CTk):
         steps_j2 = int(data[2])
         self.current_yaw = int(data[3]) if len(data) > 3 else 90
 
+        # Read distance sensor if present
+        distance_mm = None
+        if len(data) > 4:
+            try:
+                distance_mm = float(data[4])
+            except (ValueError, TypeError):
+                distance_mm = None
+        self.current_distance = distance_mm
+
         if self.robot:
             self.robot._last_z = steps_z
             self.robot._last_j1 = steps_j1
             self.robot._last_j2 = steps_j2
             self.robot._last_yaw = self.current_yaw
+            self.robot._last_distance = distance_mm
 
         self.status_panel.update_positions(steps_z, steps_j1, steps_j2, self.current_yaw)
+        self.status_panel.update_distance(distance_mm)   # <-- show distance
+
         self.last_steps = (steps_z, steps_j1, steps_j2)
         self.arm_canvas.update_joints(steps_j1, steps_j2)
 

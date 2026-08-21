@@ -28,7 +28,7 @@ except ImportError:
 @dataclass
 class RobotConfig:
     # Serial
-    serial_port: str = "/dev/ttyUSB0"
+    serial_port: str = "/dev/cu.usbserial-110"
     baudrate: int = 115200
     serial_timeout: float = 0.05
 
@@ -68,8 +68,7 @@ class RobotConfig:
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
-    z_correction_coeffs: tuple = (-70.483621, 0.217447, -0.090760,
-                                   -0.000162, -0.000007, 0.000164)
+    z_correction_coeffs: tuple = (-69.299049, 0.269995, -0.064901, -0.000231, -0.000035, 0.000119)
 
 @dataclass
 class VisionConfig:
