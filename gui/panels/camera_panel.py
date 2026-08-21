@@ -21,6 +21,8 @@ class CameraPanel(ctk.CTkFrame):
         self.display_width = width
         self.display_height = height
 
+        self.raw_perceptions = []
+
         # Use external BooleanVars if provided, otherwise create local ones
         self.show_aruco = show_aruco_var or ctk.BooleanVar(value=True)
         self.show_vlm = show_vlm_var or ctk.BooleanVar(value=True)
@@ -90,6 +92,10 @@ class CameraPanel(ctk.CTkFrame):
             if self.show_calibrated_var.get() and self.calibrator and self.calibrator.is_calibrated:
                 self._draw_calibrated_markers(frame)
                 status_parts.append("Calib ✓")
+
+            h, w = frame.shape[:2]
+            for raw_data in self.raw_perceptions:
+                self._draw_raw_perception(frame, raw_data, "", h, w)
 
             if self.placement_marker:
                 px, py, lbl = self.placement_marker
@@ -169,3 +175,52 @@ class CameraPanel(ctk.CTkFrame):
             cv2.circle(frame, (px_x, px_y), 2, (255, 255, 255), -1)
             cv2.putText(frame, label, (px_x + 12, px_y - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+
+    def update_raw_perception(self, data):
+        """Store the raw VLM response for overlay."""
+        if data is not None:
+            self.raw_perceptions.append(data)
+        else:
+            self.raw_perceptions.clear()
+
+    def clear_perception_points(self):
+        self.perception_points = []
+        self.raw_perceptions.clear()
+
+    def _draw_raw_perception(self, frame, data, prefix, h, w):
+        """Recursively draw any point-like lists from raw VLM output."""
+            # First, check if this is a point (list/tuple of two numbers)
+        if isinstance(data, (list, tuple)) and len(data) == 2 and all(isinstance(x, (int, float)) for x in data):
+            norm_y, norm_x = data[0], data[1]
+            if 0 <= norm_y <= 1000 and 0 <= norm_x <= 1000:
+                px_x = int((norm_x / 1000.0) * w)
+                px_y = int((norm_y / 1000.0) * h)
+                cv2.circle(frame, (px_x, px_y), 8, (255, 255, 0), -1)
+                cv2.circle(frame, (px_x, px_y), 8, (255, 255, 255), 1)
+                label = prefix[-12:] if prefix else "pt"
+                cv2.putText(frame, label, (px_x + 12, px_y - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2.5)
+            return  # stop recursion for this branch
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                new_prefix = f"{prefix}.{key}" if prefix else key
+                self._draw_raw_perception(frame, value, new_prefix, h, w)
+        elif isinstance(data, list):
+            for idx, item in enumerate(data):
+                self._draw_raw_perception(frame, item, f"{prefix}[{idx}]", h, w)
+        else:
+            # Check if this is a point: a list/tuple of two numbers
+            if isinstance(data, (list, tuple)) and len(data) == 2 and all(isinstance(x, (int, float)) for x in data):
+                norm_y, norm_x = data[0], data[1]
+                # Assume coordinates are normalised 0-1000
+                if 0 <= norm_y <= 1000 and 0 <= norm_x <= 1000:
+                    px_x = int((norm_x / 1000.0) * w)
+                    px_y = int((norm_y / 1000.0) * h)
+                    # Draw a bright cyan circle with white border
+                    cv2.circle(frame, (px_x, px_y), 8, (255, 255, 0), -1)
+                    cv2.circle(frame, (px_x, px_y), 8, (255, 255, 255), 1)
+                    # Show the key path as label (shortened)
+                    label = prefix[-12:] if prefix else "pt"
+                    cv2.putText(frame, label, (px_x + 12, px_y - 8),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)

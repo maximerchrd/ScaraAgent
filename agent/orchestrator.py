@@ -383,6 +383,8 @@ class AgentOrchestrator:
 
                         logging.info(f"Raw perception '{store_as}': {json.dumps(result)}")
 
+                        self.queue.put({"type": "raw_perception", "data": result})
+                        
                         # overlay raw perceived points on the camera feed
                         overlay_points = self._extract_perception_points(result, label=store_as)
 

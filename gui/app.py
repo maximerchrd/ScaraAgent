@@ -411,9 +411,13 @@ class ScaraAgentApp(ctk.CTk):
                 elif msg_type == "perception_overlay":
                     if hasattr(self, 'camera_panel') and self.camera_panel:
                         self.camera_panel.set_perception_points(data)
+                elif msg_type == "raw_perception":
+                    if hasattr(self, 'camera_panel') and self.camera_panel:
+                        self.camera_panel.update_raw_perception(data)
                 elif msg_type == "clear_perception_overlay":
                     if hasattr(self, 'camera_panel') and self.camera_panel:
                         self.camera_panel.clear_perception_points()
+                        self.camera_panel.update_raw_perception(None)
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 
