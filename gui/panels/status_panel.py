@@ -128,43 +128,113 @@ class StatusPanel(ctk.CTkFrame):
             self.z_calib_btn.configure(state="normal", text="📏 Calibrate Z")
 
     def _collect_z_data(self):
-        # Same grid as CAMERA_CALIB_GRID (you can import it)
+        """
+        Probe the table surface using two‑phase probing:
+        - Coarse: fast downward until distance <= target
+        - Fine: back up and step down slowly to get precise Z
+        Distance sensor averaged over ~10s → settle times are long.
+        """
         grid_points = [
-            (350, -420), (350, -350), (350, -275), (350, -200), (350, -125), (350, -50), (350, 50),
-            (390, -420), (390, -350), (390, -275), (390, -200), (390, -125), (390, -50), (390, 50),
-            (465, -420), (465, -350), (465, -275), (465, -200), (465, -125), (465, -50), (465, 50),
-            (520, -420), (520, -350), (520, -275), (520, -200), (520, -125), (520, -50), (520, 50),
-            (580, -350), (580, -275), (580, -200), (580, -125), (580, -50), (580, 50),
+            (350, -420), (350, -350), (350, -275), (350, -200), (350, -125),
+            (350, -50), (350, 50),
+            (390, -420), (390, -350), (390, -275), (390, -200), (390, -125),
+            (390, -50), (390, 50),
+            (465, -420), (465, -350), (465, -275), (465, -200), (465, -125),
+            (465, -50), (465, 50),
+            (520, -420), (520, -350), (520, -275), (520, -200), (520, -125),
+            (520, -50), (520, 50),
+            (580, -350), (580, -275), (580, -200), (580, -125), (580, -50),
+            (580, 50),
             (650, -200), (650, -125), (650, -50),
         ]
 
-        S0 = 269.0
-        Z_COMMAND = 10.0
-        SETTLE_TIME = 10.0
+        TARGET_DIST = 270.0          # mm – distance when gripper just touches table
+        Z_CALIBRATION_SAFE_Z = 15.0                # mm – safe travel height
+        COARSE_STEP = 3.0            # mm – fast approach step
+        FINE_STEP = 0.5              # mm – precise step
+        Z_LIMIT = -20.0              # mm – lowest allowed Z (safety)
+        SETTLE_COARSE = 3.0          # seconds – wait for averaged reading
+        SETTLE_FINE = 2.0            # seconds – wait for fine reading
+        BACKUP_AMOUNT = 5.0          # mm – back up after crossing target before fine probing
 
         data = []
-        # Move to safe Z first
-        cur_x, cur_y, cur_z = self.robot.get_work_position()
-        self.robot.move_to_xyz(cur_x, cur_y, 60.0, use_z_correction=False, block=False)
-        time.sleep(3.0)
+        total = len(grid_points)
+
+        self.z_calib_status.configure(text="Probing table surface...", text_color="orange")
 
         for i, (x, y) in enumerate(grid_points):
-            self.z_calib_status.configure(text=f"Point {i+1}/{len(grid_points)}")
-            logging.info(f"Z calib point {i+1}: X={x} Y={y}")
+            self.z_calib_status.configure(
+                text=f"Point {i+1}/{total}: ({x}, {y})",
+                text_color="orange"
+            )
+            logging.info(f"Probing point {i+1}: X={x} Y={y}")
 
-            self.robot.move_to_xyz(x, y, Z_COMMAND, use_z_correction=False, block=False)
-            time.sleep(3.0)          # motion wait (adjust)
-            time.sleep(SETTLE_TIME)
+            # Move to (x,y) at safe height (no correction)
+            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+            time.sleep(0.5)
 
-            distance = self.robot.get_distance_mm()
-            if distance is None:
-                logging.warning(f"No distance at X={x} Y={y}")
+            # ---- Phase 1: Coarse approach ----
+            current_z = Z_CALIBRATION_SAFE_Z
+            touched = False
+            dist = None
+
+            while current_z > Z_LIMIT:
+                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True)
+                time.sleep(SETTLE_COARSE)
+
+                dist = self.robot.get_distance_mm()
+                if dist is None:
+                    logging.warning(f"No distance at X={x} Y={y} Z={current_z:.1f}")
+                    break
+
+                logging.debug(f"Coarse: Z={current_z:.1f}  dist={dist:.1f}")
+                if dist <= TARGET_DIST:
+                    # Crossed the target – break out
+                    touched = True
+                    break
+
+                current_z -= COARSE_STEP
+
+            if not touched:
+                logging.warning(f"  No contact at point ({x}, {y}) – skipped")
+                self.z_calib_status.configure(text=f"⚠️ Point {i+1} no contact", text_color="orange")
+                # Return to safe height
+                self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+                time.sleep(0.3)
                 continue
 
-            z_touch = Z_COMMAND - (distance - S0)
-            data.append((x, y, z_touch))
-            logging.info(f"  distance={distance:.1f}, z_touch={z_touch:.3f}")
+            # ---- Phase 2: Fine approach ----
+            # Back up by BACKUP_AMOUNT to get above target
+            current_z += BACKUP_AMOUNT
+            # Ensure we don't go above safe height
+            if current_z > Z_CALIBRATION_SAFE_Z:
+                current_z = Z_CALIBRATION_SAFE_Z
 
+            # Now step down finely until we cross target again
+            while current_z > Z_LIMIT:
+                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True)
+                time.sleep(SETTLE_FINE)
+
+                dist = self.robot.get_distance_mm()
+                if dist is None:
+                    break
+
+                logging.debug(f"Fine: Z={current_z:.1f}  dist={dist:.1f}")
+                if dist <= TARGET_DIST:
+                    # Contact detected at this Z – record it
+                    _, _, z_touch = self.robot.get_work_position()
+                    data.append((x, y, z_touch))
+                    logging.info(f"  Touched at Z={z_touch:.3f} mm (dist={dist:.1f})")
+                    break
+
+                current_z -= FINE_STEP
+
+            # Return to safe height
+            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+            time.sleep(0.3)
+
+        self.z_calib_status.configure(text=f"Collected {len(data)} points", text_color="lightgreen")
+        logging.info(f"Probing complete: {len(data)} valid points")
         return data
 
     def _fit_polynomial(self, data):

@@ -199,7 +199,7 @@ class CameraPanel(ctk.CTkFrame):
                 cv2.circle(frame, (px_x, px_y), 8, (255, 255, 255), 1)
                 label = prefix[-12:] if prefix else "pt"
                 cv2.putText(frame, label, (px_x + 12, px_y - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2.5)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
             return  # stop recursion for this branch
 
         if isinstance(data, dict):

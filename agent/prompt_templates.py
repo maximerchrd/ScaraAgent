@@ -32,6 +32,10 @@ Perceive rules:
 - Therefore in `$ref`, point[0] is X and point[1] is Y.
 - Do not ask the VLM a vague question without a JSON format.
 
+⚠️ CRITICAL: The VLM returns [y, x] (normalised). The orchestrator ALWAYS converts this to [x, y] (world mm) before storing.
+Therefore, any stored perception (e.g., board_state, inventory) has point[0] = X (millimetres) and point[1] = Y (millimetres).
+NEVER swap them back.
+
 Stored coordinate references:
 To use a stored perception coordinate in a later action, use:
   {"action": "move_to", "x": "$ref:red_cube.point[0]", "y": "$ref:red_cube.point[1]"}

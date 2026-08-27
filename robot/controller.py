@@ -81,6 +81,11 @@ class RobotController:
                         self._last_j1 = int(data[1])
                         self._last_j2 = int(data[2])
                         self._last_yaw = int(data[3]) if len(data) > 3 else self._last_yaw
+                    if len(data) > 4:
+                        try:
+                            self._last_distance = float(data[4])
+                        except (ValueError, TypeError):
+                            self._last_distance = None
             except Exception as e:
                 # Ignore empty queue or key errors
                 pass

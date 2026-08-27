@@ -63,12 +63,12 @@ class RobotConfig:
     park_z_mm: float = 10.0
 
     safe_z_mm: float = 60.0      # travel height (clears all objects)
-    pick_z_mm: float = -1.0      # height for picking
-    place_z_mm: float = 45.0    # height for releasing
+    pick_z_mm: float = -3.0      # height for picking
+    place_z_mm: float = 10.0    # height for releasing
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
-    z_correction_coeffs: tuple = (-69.299049, 0.269995, -0.064901, -0.000231, -0.000035, 0.000119)
+    z_correction_coeffs: tuple = (-68.695767, 0.285923, -0.061986, -0.000258, -0.000038, 0.000111)
 
 @dataclass
 class VisionConfig:
