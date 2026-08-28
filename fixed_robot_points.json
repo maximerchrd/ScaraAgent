@@ -1,0 +1,38 @@
+[
+  {
+    "marker_id": 5,
+    "corner_index": 3,
+    "robot_x": 645.3913148055415,
+    "robot_y": -94.11895610908758
+  },
+  {
+    "marker_id": 0,
+    "corner_index": 2,
+    "robot_x": 266.554629518041,
+    "robot_y": 298.91697436788405
+  },
+  {
+    "marker_id": 1,
+    "corner_index": 2,
+    "robot_x": 498.03407623907,
+    "robot_y": 260.967710477515
+  },
+  {
+    "marker_id": 3,
+    "corner_index": 2,
+    "robot_x": 241.02496702195214,
+    "robot_y": -86.00974943553504
+  },
+  {
+    "marker_id": 4,
+    "corner_index": 2,
+    "robot_x": 477.513157103451,
+    "robot_y": -87.02375101776033
+  },
+  {
+    "marker_id": 7,
+    "corner_index": 3,
+    "robot_x": 415.03610752782015,
+    "robot_y": -413.93825100306594
+  }
+]

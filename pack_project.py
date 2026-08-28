@@ -29,24 +29,19 @@ PROJECT_DESCRIPTION = """
 #   - Mid‑plan VLM querying via "perceive" actions (batched, auto‑converted to world mm — NOT YET TESTED)
 #   - Retry/backoff for LLM calls
 #
-# Agentic enhancements (phased):
-#   Phase 1 – Iterative VLM questioning (implemented):
-#       The LLM critic examines the VLM’s first scene description, identifies missing/ambiguous
-#       objects, and formulates targeted follow‑up questions to the VLM. This yields a more
-#       reliable world model before planning.
-#
-#   Phase 2 – Closed‑loop verification & recovery (planned, not yet implemented):
+# Agentic enhancements (phased):#
+#   Phase 1 – Closed‑loop verification & recovery (planned, not yet implemented):
 #       After every pick/place, a verification image is taken and the VLM is asked to
 #       confirm the expected state change. If verification fails, the LLM generates a
 #       repair plan.
 #
-#   Phase 3 – Escalation to Gemini Robotics ER (planned, not yet implemented):
+#   Phase 2 – Escalation to Gemini Robotics ER (planned, not yet implemented):
 #       When confidence is low (empty results, contradictions, or repeated verification
 #       failures), the full image is sent to a more powerful VLM for high‑accuracy perception.
 #       Currently, the system escalates to the main planner LLM when the skill decision model
 #       is uncertain, but not yet to a specialised VLM.
 #
-#   Phase 4 – Persistent spatial memory & hierarchical planning (planned, not yet implemented):
+#   Phase 3 – Persistent spatial memory & hierarchical planning (planned, not yet implemented):
 #       A scene graph (object → coordinate) is maintained and updated after each action.
 #       The LLM uses it for multi‑step planning without re‑detection. Complex tasks are
 #       broken into sub‑goals by a hierarchical planner, which simulates geometric
@@ -123,9 +118,7 @@ def pack_project(root_dir: str = ".") -> None:
             except Exception as e:
                 content = f"# ERROR reading file: {e}"
 
-            out.write(f"# {'=' * 60}\n")
             out.write(f"# FILE: {rel_path}\n")
-            out.write(f"# {'=' * 60}\n\n")
             out.write(content)
             out.write("\n\n\n")
 

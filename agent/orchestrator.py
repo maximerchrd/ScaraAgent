@@ -10,10 +10,11 @@ import json
 import logging
 import numpy as np
 import re
+import cv2
 
 from agent.gemini_er import GeminiER
 from agent.llm import ChatGPTOSS
-from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT, PLACEMENT_REFINEMENT_PROMPT
+from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
 from config import config
@@ -39,7 +40,6 @@ class AgentOrchestrator:
         self.skill_state = {}
         self.running = False
         self.thread = None
-        # Track the last commanded move_to target for pick/place actions
         self._last_move_target = None
 
         # store the last homography for placement refinement
@@ -73,21 +73,78 @@ class AgentOrchestrator:
         """External method to enqueue a new prompt (called from GUI)."""
         self.agent_queue.put({"type": "agent_prompt", "data": user_prompt})
 
+    def _compute_homography_from_frame(self, frame):
+        """
+        Detect markers in the given frame and compute a homography
+        using the fixed robot coordinates stored in pixel_calib.
+        Returns (H, (h_img, w_img)) or (None, None) if insufficient markers.
+        """
+        if frame is None:
+            return None, None
+
+        h_img, w_img = frame.shape[:2]
+
+        # Detect markers
+        markers = detect_aruco(frame)
+        detected_markers = {m["id"]: m["corners"] for m in markers}
+        
+        logging.info(f"Detected markers: {list(detected_markers.keys())}")
+
+        # Check if pixel_calib exists and has fixed points
+        if self.robot is None or self.robot.pixel_calib is None:
+            logging.error("Robot or pixel_calib is None")
+            return None, None
+
+        fixed_points = self.robot.pixel_calib.fixed_points
+        logging.info(f"Fixed points in calibration: {len(fixed_points)}")
+        if fixed_points:
+            logging.info(f"First few fixed points: {fixed_points[:3]}")
+
+        pixel_points = []
+        robot_points = []
+
+        for marker_id, corners_px in detected_markers.items():
+            for corner_idx in range(4):
+                coord = self.robot.pixel_calib.get_fixed_robot_coord(marker_id, corner_idx)
+                if coord is not None:
+                    rx, ry = coord
+                    px, py = corners_px[corner_idx]
+                    pixel_points.append([px, py])
+                    robot_points.append([rx, ry])
+
+        logging.info(f"Found {len(pixel_points)} marker corner correspondences.")
+        if len(pixel_points) < 3:
+            logging.warning(f"Need ≥3 marker corners, only {len(pixel_points)} visible.")
+            return None, None
+
+        if len(pixel_points) == 3:
+            H_affine = cv2.getAffineTransform(np.float32(pixel_points), np.float32(robot_points))
+            H = np.vstack([H_affine, [0, 0, 1]])
+        else:
+            H, _ = cv2.findHomography(np.float32(pixel_points), np.float32(robot_points), cv2.RANSAC, 3.0)
+
+        if H is None:
+            logging.warning("Homography computation failed.")
+            return None, None
+
+        logging.info(f"Homography computed successfully from {len(pixel_points)} points.")
+        return H, (h_img, w_img)
+
     def _refine_placement(self, target_label, target_x, target_y):
         """
         Ask the VLM to find the best drop point on/inside the target.
-        Only called when the target appears to be a container.
         Returns (refined_x_mm, refined_y_mm) or (None, None) on failure.
         """
-        if self._last_homography is None or self._last_frame_shape is None:
-            return None, None
-
         # Capture a fresh frame
         frame = self.camera.get_latest_frame() if self.camera else None
         if frame is None:
             return None, None
 
-        h_img, w_img = frame.shape[:2]
+        # Compute fresh homography for this frame
+        H, (h_img, w_img) = self._compute_homography_from_frame(frame)
+        if H is None:
+            logging.warning("No homography available for refinement")
+            return None, None
 
         prompt = (
             "You are helping a SCARA robot place an object accurately.\n"
@@ -105,31 +162,37 @@ class AgentOrchestrator:
 
         try:
             result = self.gemini.localize_objects(frame, prompt=prompt)
-            if result and len(result) > 0:
-                refined_point = result[0]["point"]   # [y, x] normalized 0-1000
-                px_x = (refined_point[1] / 1000.0) * w_img
-                px_y = (refined_point[0] / 1000.0) * h_img
+            if not result or len(result) == 0:
+                return None, None
 
-                # After computing refined_point and px_x, px_y:
-                if self.queue:
-                    self.queue.put({
-                        "type": "placement_marker",
-                        "data": {"pixel": [px_x, px_y], "label": f"drop {target_label}"}
-                    })
+            refined_point = result[0]["point"]   # [y, x] normalized 0-1000
+            px_x = (refined_point[1] / 1000.0) * w_img
+            px_y = (refined_point[0] / 1000.0) * h_img
 
-                H = self._last_homography
-                pt_pixel = np.array([px_x, px_y, 1.0])
-                pt_world = H @ pt_pixel
-                pt_world = pt_world / pt_world[2]
-                x_mm, y_mm = pt_world[0], pt_world[1]
+            # Convert to robot-native using the fresh homography
+            pt_pixel = np.array([px_x, px_y, 1.0])
+            pt_world = H @ pt_pixel
+            pt_world = pt_world / pt_world[2]
+            x_mm, y_mm = pt_world[0], pt_world[1]
 
-                if (config.vision.workspace_x_min <= x_mm <= config.vision.workspace_x_max and
-                    config.vision.workspace_y_min <= y_mm <= config.vision.workspace_y_max):
-                    logging.info(f"Placement refined for '{target_label}': "
-                                 f"({target_x:.1f}, {target_y:.1f}) → ({x_mm:.1f}, {y_mm:.1f})")
-                    self.queue.put({"type": "agent_reasoning",
-                                    "data": f"🎯 Refined placement for '{target_label}' → inside cavity"})
-                    return x_mm, y_mm
+            # Place a marker on the camera feed for visual feedback
+            if self.queue:
+                self.queue.put({
+                    "type": "placement_marker",
+                    "data": {"pixel": [px_x, px_y], "label": f"drop {target_label}"}
+                })
+
+            # Workspace bounds check
+            if (config.vision.workspace_x_min <= x_mm <= config.vision.workspace_x_max and
+                config.vision.workspace_y_min <= y_mm <= config.vision.workspace_y_max):
+                logging.info(f"Placement refined for '{target_label}': "
+                            f"({target_x:.1f}, {target_y:.1f}) → ({x_mm:.1f}, {y_mm:.1f})")
+                self.queue.put({"type": "agent_reasoning",
+                                "data": f"🎯 Refined placement for '{target_label}' → inside cavity"})
+                return x_mm, y_mm
+            else:
+                logging.warning(f"Refined point outside workspace: ({x_mm:.1f},{y_mm:.1f})")
+
         except Exception as e:
             logging.warning(f"Placement refinement failed: {e}")
 
@@ -155,27 +218,18 @@ class AgentOrchestrator:
 
             h_img, w_img = frame.shape[:2]
 
-            # 2. Detect ArUco markers
-            if self.calibrator and self.calibrator.is_calibrated:
-                detected_markers = self.calibrator.calibrated_corners
-                logging.info("Using calibrated marker positions.")
-            else:
-                markers = detect_aruco(frame)
-                detected_markers = {m["id"]: m["corners"] for m in markers}
-
-            # 3. Compute global homography from all visible markers
-            localizer = MarkerLocalizer()
-            H = localizer.compute_global_homography(detected_markers)
-            if H is None:
-                logging.error("Failed to compute homography from visible markers.")
-                self.queue.put({"type": "agent_error", "data": "Homography computation failed"})
+            # 2. Compute homography from markers in this frame
+            result = self._compute_homography_from_frame(frame)
+            if result is None or result[0] is None:
+                logging.error("No markers visible in current frame. Cannot proceed.")
+                self.queue.put({"type": "agent_error", "data": "No ArUco markers visible. Check camera and markers."})
                 return
 
-            # store for later use in placement refinement
+            H, (h_img, w_img) = result
             self._last_homography = H
             self._last_frame_shape = (h_img, w_img)
 
-            # 4. Iterative VLM‑LLM perception loop
+            # 3. Iterative VLM‑LLM perception loop
             objects = self.perception.perceive(frame, user_prompt)
 
             # Send final VLM object list to GUI for overlay
@@ -187,15 +241,21 @@ class AgentOrchestrator:
                 px_x = (norm_x / 1000.0) * w_img
                 px_y = (norm_y / 1000.0) * h_img
 
-                pt_pixel = np.array([px_x, px_y, 1.0])
-                pt_world = H @ pt_pixel
-                pt_world = pt_world / pt_world[2]
-                x_mm, y_mm = pt_world[0], pt_world[1]
+                # Use live homography from this frame
+                if self._last_homography is not None:
+                    pt_pixel = np.array([px_x, px_y, 1.0])
+                    pt_world = self._last_homography @ pt_pixel
+                    pt_world = pt_world / pt_world[2]
+                    x_mm, y_mm = pt_world[0], pt_world[1]
+                else:
+                    # No markers visible in this frame – cannot convert
+                    logging.warning(f"No homography available, skipping object: {obj['label']}")
+                    continue
 
+                # Workspace bounds check
                 if not (config.vision.workspace_x_min <= x_mm <= config.vision.workspace_x_max and
                         config.vision.workspace_y_min <= y_mm <= config.vision.workspace_y_max):
-                    logging.warning(f"Outlier rejected: {obj['label']} at ({x_mm:.1f}, {y_mm:.1f}) "
-                                    f"— outside workspace bounds")
+                    logging.warning(f"Outlier rejected: {obj['label']} at ({x_mm:.1f}, {y_mm:.1f})")
                     continue
 
                 located_objects.append({
@@ -587,10 +647,10 @@ class AgentOrchestrator:
                 return
 
             self._last_move_target = (x, y)
-            self.robot.move_to_xyz(x, y, config.robot.safe_z_mm, block=True)
+            self.robot.move_to_native(x, y, config.robot.safe_z_mm, block=True)
         elif action == "move_safe":
             self._last_move_target = None
-            self.robot.move_to_xyz(
+            self.robot.move_to_native(
                 config.robot.park_x_mm,
                 config.robot.park_y_mm,
                 config.robot.safe_z_mm,
@@ -604,11 +664,11 @@ class AgentOrchestrator:
                 logging.warning("pick() without coordinates or preceding move_to")
 
             # Lower to pick height at the stored XY
-            self.robot.move_to_xyz(pick_x, pick_y, config.robot.pick_z_mm, block=True)
+            self.robot.move_to_native(pick_x, pick_y, config.robot.pick_z_mm, block=True)
             self.robot.gripper_close()
             time.sleep(max(0.5, self.robot.gripper_close_duration / 1000.0 + 0.2))
             # Raise back at the same XY
-            self.robot.move_to_xyz(pick_x, pick_y, config.robot.safe_z_mm, block=True)
+            self.robot.move_to_native(pick_x, pick_y, config.robot.safe_z_mm, block=True)
         elif action == "place":
             place_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             place_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
@@ -630,10 +690,10 @@ class AgentOrchestrator:
                 else:
                     logging.info(f"⚠️  Refinement failed for '{target_label}' — using original coordinates")
 
-            self.robot.move_to_xyz(place_x, place_y, config.robot.place_z_mm, block=True)
+            self.robot.move_to_native(place_x, place_y, config.robot.place_z_mm, block=True)
             self.robot.gripper_open()
             time.sleep(max(0.5, self.robot.gripper_open_duration / 1000.0 + 0.2))
-            self.robot.move_to_xyz(place_x, place_y, config.robot.safe_z_mm, block=True)
+            self.robot.move_to_native(place_x, place_y, config.robot.safe_z_mm, block=True)
         else:
             logging.warning(f"Unknown action: {action}")
 
@@ -683,7 +743,6 @@ class AgentOrchestrator:
             else:
                 return None
         return current
-
 
     def _normalized_to_world(self, norm_x, norm_y):
         """

@@ -68,7 +68,7 @@ class RobotConfig:
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
-    z_correction_coeffs: tuple = (-68.695767, 0.285923, -0.061986, -0.000258, -0.000038, 0.000111)
+    z_correction_coeffs: tuple = (-51.913628, 0.194194, -0.085585, -0.000153, -0.000061, 0.000114)
 
 @dataclass
 class VisionConfig:
@@ -118,10 +118,27 @@ class LLMConfig:
     max_vlm_iterations: int = 2   # max number of VLM calls in perception loop
 
 @dataclass
+class ManualPixelCalibConfig:
+    # Map ArUco ID to the corner you will jog to.
+    # -1 = center, 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+    marker_corners: dict = field(default_factory=lambda: {
+        #top-left: 0; top-right: 1; bottom-right: 2; bottom-left: 3; center: -1
+        0: 2,   
+        1: 2,
+        2: 3,
+        3: 2,
+        4: 2,
+        5: 3,
+        6: 2,
+        7: 3,
+    })
+
+@dataclass
 class Config:
     robot: RobotConfig = field(default_factory=RobotConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    manual_pixel_calib: ManualPixelCalibConfig = field(default_factory=ManualPixelCalibConfig)
     
     # File paths
     measurements_csv: str = "measurements.csv"

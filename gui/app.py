@@ -19,6 +19,7 @@ from gui.panels.status_panel import StatusPanel
 from gui.widgets.arm_canvas import ArmCanvas
 from robot.kinematics import joints_to_xyz
 from gui.panels.camera_panel import CameraPanel
+from gui.panels.manual_calib_panel import ManualCalibPanel
 
 # Shared calibration logic (imported from calibration folder)
 from calibration.utils import (
@@ -194,6 +195,23 @@ class ScaraAgentApp(ctk.CTk):
             show_calibrated_var=self.show_calibrated
         )
         self.camera_panel.grid(row=1, column=0, sticky="nsew")
+
+        self.calib_panel = ManualCalibPanel(
+                    right_frame,
+                    robot=self.robot,
+                    camera=self.camera
+                )
+        self.calib_panel.grid(row=2, column=0, pady=10, sticky="ew")
+
+        self.open_view_btn = ctk.CTkButton(
+            right_frame,
+            text="📺 Open Agent View",
+            command=self._open_agent_view,
+            fg_color="#3498DB",
+            hover_color="#2980B9",
+            width=160
+        )
+        self.open_view_btn.grid(row=3, column=0, pady=5)
 
         # --- Agent panel (bottom) ---
         if AgentPanel:
@@ -472,6 +490,35 @@ class ScaraAgentApp(ctk.CTk):
 
     def on_closing(self):
         logging.info("Shutting down GUI...")
+        if hasattr(self, '_agent_viewer') and self._agent_viewer is not None:
+            try:
+                self._agent_viewer.destroy()
+            except:
+                pass
         if self.robot:
             self.robot.shutdown()
         self.destroy()
+
+    def _open_agent_view(self):
+        """Open the dedicated Agent Viewer window."""
+        # Check if already open
+        if hasattr(self, '_agent_viewer') and self._agent_viewer is not None:
+            try:
+                self._agent_viewer.focus()
+                return
+            except tk.TclError:
+                # Window was destroyed
+                self._agent_viewer = None
+
+        from gui.agent_viewer import AgentViewerWindow
+        self._agent_viewer = AgentViewerWindow(
+            self,
+            camera=self.camera,
+            orchestrator=self.orchestrator,
+            agent_queue=self.agent_queue,
+            queue=self.queue,
+            show_aruco_var=self.show_aruco,
+            show_vlm_var=self.show_vlm,
+            show_calibrated_var=self.show_calibrated,
+            calibrator=self.calibrator
+        )

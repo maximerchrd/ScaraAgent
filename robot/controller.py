@@ -10,6 +10,7 @@ import threading
 from robot.kinematics import xyz_to_joints, joints_to_xyz
 from utils.safe_queue import SafeQueue
 from config import config
+from robot.manual_calibrator import ManualPixelCalibrator
 
 class RobotController:
     def __init__(self, serial_comm, queue=None):
@@ -22,6 +23,8 @@ class RobotController:
         self.zero_offset_j2 = 0
         self.zero_mm = (0.0, 0.0, 0.0)   # native mm at zero
         self.has_zero = False
+
+        self.pixel_calib = ManualPixelCalibrator()   # auto-loads existing file
 
         # Gripper timing
         self._gripper_timer = None
@@ -192,3 +195,28 @@ class RobotController:
 
     def get_distance_mm(self):
         return self._last_distance
+
+    def move_to_native(self, x_native, y_native, z_mm, use_z_correction=True, block=False):
+        """
+        Move to coordinates that are already in the robot's native work frame
+        (i.e., the same frame returned by get_work_position()).
+        This bypasses the pixel calibration mapping.
+        """
+        if use_z_correction:
+            z_mm = self.get_table_z(x_native, y_native) + z_mm
+
+        if self.has_zero:
+            x_abs = x_native + self.zero_mm[0]
+            y_abs = y_native + self.zero_mm[1]
+            z_abs = z_mm + self.zero_mm[2]
+        else:
+            x_abs, y_abs, z_abs = x_native, y_native, z_mm
+
+        steps_z, steps_j1, steps_j2 = xyz_to_joints(x_abs, y_abs, z_abs)
+        cmd = f"G0 Z{steps_z} A{steps_j1} B{steps_j2}"
+        self.send_raw(cmd)
+
+        if block:
+            distance = abs(steps_z - self._last_z) + abs(steps_j1 - self._last_j1) + abs(steps_j2 - self._last_j2)
+            wait_time = distance / 1000.0 + 0.5
+            time.sleep(wait_time)
