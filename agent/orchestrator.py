@@ -50,7 +50,12 @@ class AgentOrchestrator:
         self._last_homography = None
         self._last_frame_shape = None
 
-        self.gripper_cam = GripperCamera()
+        if config.robot.enable_gripper_refinement:
+            self.gripper_cam = GripperCamera()
+        else:
+            self.gripper_cam = None
+            logging.info("Gripper camera disabled.")
+        
 
     def start(self):
         if self.thread is not None:

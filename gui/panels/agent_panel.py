@@ -3,12 +3,13 @@ import customtkinter as ctk
 import tkinter as tk
 
 class AgentPanel(ctk.CTkFrame):
-    def __init__(self, parent, orchestrator=None, agent_queue=None):
-        super().__init__(parent, height=120)  # increased height for log box
+    def __init__(self, parent, orchestrator=None, agent_queue=None, open_agent_view_callback=None):
+        super().__init__(parent, height=80)   # reduced height
         self.orchestrator = orchestrator
         self.agent_queue = agent_queue
+        self.open_agent_view_callback = open_agent_view_callback   # store the callback
 
-        # Top row: prompt entry + submit + status
+        # Top row: prompt entry + submit + status + open view button
         top_row = ctk.CTkFrame(self, fg_color="transparent")
         top_row.pack(fill="x", padx=10, pady=(5,0))
 
@@ -24,8 +25,20 @@ class AgentPanel(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(top_row, text="Idle", text_color="gray", width=80)
         self.status_label.pack(side="left", padx=5)
 
-        # Bottom: scrollable log for LLM responses
-        self.log_text = ctk.CTkTextbox(self, height=80, wrap="word")
+        # Add the Open Agent View button if callback is provided
+        if self.open_agent_view_callback is not None:
+            self.open_view_btn = ctk.CTkButton(
+                top_row,
+                text="📺 Agent View",
+                command=self.open_agent_view_callback,   # use the stored callback
+                fg_color="#3498DB",
+                hover_color="#2980B9",
+                width=100
+            )
+            self.open_view_btn.pack(side="left", padx=5)
+
+        # Bottom: scrollable log (unchanged)
+        self.log_text = ctk.CTkTextbox(self, height=50, wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=10, pady=(5,10))
         self.log_text.insert("end", "Agent ready.\n")
         self.log_text.configure(state="disabled")  # read-only

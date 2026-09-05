@@ -14,6 +14,12 @@ class AgentViewerWindow(ctk.CTkToplevel):
         self.orchestrator = orchestrator
         self.gripper_cam = orchestrator.gripper_cam if orchestrator else None
 
+        if self.gripper_cam is None:
+            self.gripper_camera_panel.status_label.configure(
+                text="Gripper camera disabled",
+                text_color="gray"
+            )
+
         # Grid: 2 columns for cameras, 1 row for agent panel
         self.grid_rowconfigure(0, weight=1)   # cameras
         self.grid_rowconfigure(1, weight=0)   # agent panel

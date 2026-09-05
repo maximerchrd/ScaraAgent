@@ -5,57 +5,52 @@ from config import config
 
 class ManualCalibPanel(ctk.CTkFrame):
     def __init__(self, parent, robot, camera=None, orchestrator=None):
-        """
-        Panel for manual calibration:
-        - Recording ArUco marker fixed points (main camera)
-        - Gripper camera calibration (hand-eye + scale)
-        """
         super().__init__(parent)
         self.robot = robot
         self.camera = camera
-        self.orchestrator = orchestrator   # <-- store orchestrator
+        self.orchestrator = orchestrator
         self.calib = robot.pixel_calib if robot else None
 
-        # ========== Header ==========
-        ctk.CTkLabel(self, text="ArUco → Robot Coordinate Recording", font=("Arial", 14, "bold")).pack(pady=5)
+        # Single row using a frame with horizontal packing
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(pady=2, fill="x", padx=5)
 
-        # ========== Marker selection (main camera) ==========
+        # Header label (optional, can be small)
+        ctk.CTkLabel(row, text="Calib:", font=("Arial", 10, "bold")).pack(side="left", padx=2)
+
+        # Marker dropdown
         self.marker_var = ctk.StringVar()
         marker_ids = [str(mid) for mid in config.manual_pixel_calib.marker_corners.keys()]
         if not marker_ids:
-            marker_ids = ["No IDs defined"]
-        self.marker_dropdown = ctk.CTkOptionMenu(self, variable=self.marker_var, values=marker_ids)
-        self.marker_dropdown.pack(pady=5)
+            marker_ids = ["No IDs"]
+        self.marker_dropdown = ctk.CTkOptionMenu(row, variable=self.marker_var, values=marker_ids, width=60)
+        self.marker_dropdown.pack(side="left", padx=2)
 
-        self.corner_label = ctk.CTkLabel(self, text="Corner: -", text_color="gray")
-        self.corner_label.pack(pady=2)
+        # Corner label
+        self.corner_label = ctk.CTkLabel(row, text="Corner: -", text_color="gray", width=60)
+        self.corner_label.pack(side="left", padx=2)
         self.marker_dropdown.bind("<<ComboboxSelected>>", self._update_corner_label)
 
-        # ========== Main camera recording buttons ==========
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(pady=5)
+        # Record button
+        self.record_btn = ctk.CTkButton(row, text="Record", width=50, command=self._record_point)
+        self.record_btn.pack(side="left", padx=2)
 
-        self.record_btn = ctk.CTkButton(btn_frame, text="Record Current Pose", command=self._record_point)
-        self.record_btn.pack(side="left", padx=5)
+        # Remove Clear button (optional, as you asked)
+        # self.clear_btn = ctk.CTkButton(row, text="Clear", width=50, ...)
 
-        self.clear_btn = ctk.CTkButton(btn_frame, text="Clear All Points", command=self._clear_points, fg_color="#E67E22")
-        self.clear_btn.pack(side="left", padx=5)
-
-        self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
-        self.status_label.pack(pady=5)
-
-        # ========== Gripper Camera Calibration ==========
+        # Gripper calibration button
         self.calib_gripper_btn = ctk.CTkButton(
-            self,
-            text="Calibrate Gripper Camera",
-            command=self._calibrate_gripper
+            row, text="Calib Gripper", command=self._calibrate_gripper, width=80
         )
-        self.calib_gripper_btn.pack(pady=5)
+        self.calib_gripper_btn.pack(side="left", padx=2)
 
-        self.gripper_calib_status = ctk.CTkLabel(
-            self, text="Gripper calib: idle", text_color="gray"
-        )
-        self.gripper_calib_status.pack(pady=2)
+        # Status label (compact)
+        self.status_label = ctk.CTkLabel(row, text="Ready", text_color="gray", width=60)
+        self.status_label.pack(side="left", padx=2)
+
+        # Gripper calib status (small)
+        self.gripper_calib_status = ctk.CTkLabel(row, text="idle", text_color="gray", width=60)
+        self.gripper_calib_status.pack(side="left", padx=2)
 
         # Initial update
         self._update_corner_label(None)
@@ -85,13 +80,6 @@ class ManualCalibPanel(ctk.CTkFrame):
             text=f"Recorded: Marker {selected_id} corner {corner_idx} at ({rx:.1f}, {ry:.1f})",
             text_color="lightgreen"
         )
-
-    # ---------- Clear points ----------
-    def _clear_points(self):
-        if self.calib:
-            self.calib.fixed_points = []
-            self.calib._save_fixed_points()
-            self.status_label.configure(text="All fixed points cleared", text_color="orange")
 
     # ---------- Gripper Camera Calibration ----------
     def _calibrate_gripper(self):

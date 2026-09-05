@@ -41,6 +41,11 @@ class GripperCamera:
 
         self._load_calibration()
 
+        # Check if gripper camera is enabled
+        if not config.robot.enable_gripper_refinement:
+            logging.info("Gripper camera disabled in config.")
+            return
+
     # ---------- Network ----------
     def _get_esp_ip(self):
         try:

@@ -65,6 +65,7 @@ class CameraPanel(ctk.CTkFrame):
 
     def _display_frame(self, frame):
         """Convert a BGR frame to PhotoImage and show it with optional overlays."""
+        #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         try:
             status_parts = []
 

@@ -135,15 +135,15 @@ class ScaraAgentApp(ctk.CTk):
             step_linear=self.jog_step_linear,
             step_yaw=self.jog_step_yaw
         )
-        self.jog_panel.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
+        self.jog_panel.grid(row=1, column=0, padx=10, pady=15, sticky="nsew")
 
         # --- Center: Status ---
         self.status_panel = StatusPanel(self, robot)
-        self.status_panel.grid(row=1, column=1, padx=20, pady=20, sticky="nsew")
+        self.status_panel.grid(row=1, column=1, padx=10, pady=15, sticky="nsew")
 
         # --- Right: Arm canvas + checkboxes + camera ---
         right_frame = ctk.CTkFrame(self, fg_color="transparent")
-        right_frame.grid(row=1, column=2, padx=20, pady=20, sticky="nsew")
+        right_frame.grid(row=1, column=2, padx=10, pady=15, sticky="nsew")
         right_frame.grid_rowconfigure(0, weight=0)
         right_frame.grid_rowconfigure(1, weight=1)
         right_frame.grid_columnconfigure(0, weight=1)
@@ -155,21 +155,26 @@ class ScaraAgentApp(ctk.CTk):
         arm_row.grid_columnconfigure(0, weight=0)
         arm_row.grid_columnconfigure(1, weight=1)
 
-        self.arm_canvas = ArmCanvas(arm_row, width=160, height=160, bg=DARK_BG)
+        self.arm_canvas = ArmCanvas(arm_row, width=100, height=100, bg=DARK_BG)
         self.arm_canvas.grid(row=0, column=0)
         self.arm_canvas.update_joints(0, 0)
 
         toggle_frame = ctk.CTkFrame(arm_row, fg_color="transparent")
         toggle_frame.grid(row=0, column=1, padx=20, sticky="w")
 
+        # ---------- Horizontal checkboxes ----------
         self.show_aruco = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(toggle_frame, text="Show ArUco", variable=self.show_aruco).pack(anchor="w", pady=3)
-
         self.show_vlm = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(toggle_frame, text="Show VLM Objects", variable=self.show_vlm).pack(anchor="w", pady=3)
-
         self.show_calibrated = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(toggle_frame, text="Show Calibrated Markers", variable=self.show_calibrated).pack(anchor="w", pady=3)
+
+        chk_aruco = ctk.CTkCheckBox(toggle_frame, text="Show ArUco", variable=self.show_aruco)
+        chk_aruco.pack(side="left", padx=5)
+
+        chk_vlm = ctk.CTkCheckBox(toggle_frame, text="Show VLM", variable=self.show_vlm)
+        chk_vlm.pack(side="left", padx=5)
+
+        chk_calib = ctk.CTkCheckBox(toggle_frame, text="Show Calibrated", variable=self.show_calibrated)
+        chk_calib.pack(side="left", padx=5)
 
         # Marker calibration button (original)
         #self.calib_btn = ctk.CTkButton(toggle_frame, text="Recalibrate", width=100,
@@ -205,15 +210,6 @@ class ScaraAgentApp(ctk.CTk):
                 )
         self.calib_panel.grid(row=2, column=0, pady=10, sticky="ew")
 
-        self.open_view_btn = ctk.CTkButton(
-            right_frame,
-            text="📺 Open Agent View",
-            command=self._open_agent_view,
-            fg_color="#3498DB",
-            hover_color="#2980B9",
-            width=160
-        )
-        self.open_view_btn.grid(row=3, column=0, pady=5)
         self.show_gripper_feed = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(toggle_frame, text="Show Gripper Feed", variable=self.show_gripper_feed).pack(anchor="w", pady=2)
 
@@ -222,7 +218,8 @@ class ScaraAgentApp(ctk.CTk):
             self.agent_panel = AgentPanel(
                 self,
                 orchestrator=self.orchestrator,
-                agent_queue=self.agent_queue
+                agent_queue=self.agent_queue,
+                open_agent_view_callback=self._open_agent_view
             )
             self.agent_panel.grid(row=2, column=0, columnspan=3, padx=20, pady=(0,10), sticky="ew")
 
