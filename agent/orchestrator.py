@@ -17,9 +17,12 @@ from agent.llm import ChatGPTOSS
 from agent.prompt_templates import SYSTEM_PROMPT, FEW_SHOT_USER, FEW_SHOT_ASSISTANT
 from vision.localization import MarkerLocalizer
 from vision.aruco_detector import detect_aruco
+from vision.gripper_camera import GripperCamera
 from config import config
 from agent.perception import PerceptionManager
 from agent.skills.skill_manager import SkillManager
+import math
+from robot.kinematics import STEPS_PER_DEG_J1, STEPS_PER_DEG_J2
 
 
 class AgentOrchestrator:
@@ -41,10 +44,13 @@ class AgentOrchestrator:
         self.running = False
         self.thread = None
         self._last_move_target = None
+        self._last_move_target_label = None
 
         # store the last homography for placement refinement
         self._last_homography = None
         self._last_frame_shape = None
+
+        self.gripper_cam = GripperCamera()
 
     def start(self):
         if self.thread is not None:
@@ -231,6 +237,16 @@ class AgentOrchestrator:
 
             # 3. Iterative VLM‑LLM perception loop
             objects = self.perception.perceive(frame, user_prompt)
+
+            self._template_cache = {}
+            for obj in objects:
+                norm_y, norm_x = obj["point"]
+                px_x = int((norm_x / 1000.0) * w_img)
+                px_y = int((norm_y / 1000.0) * h_img)
+                # Store the crop (e.g., 100x100 around the point)
+                crop = self.gripper_cam.get_template_crop(frame, (px_x, px_y, 120, 120))
+                if crop is not None and crop.shape[0] > 20 and crop.shape[1] > 20:
+                    self._template_cache[obj["label"]] = crop
 
             # Send final VLM object list to GUI for overlay
             self.queue.put({"type": "vlm_objects", "data": objects})
@@ -647,6 +663,7 @@ class AgentOrchestrator:
                 return
 
             self._last_move_target = (x, y)
+            self._last_move_target_label = step.get("label")
             self.robot.move_to_native(x, y, config.robot.safe_z_mm, block=True)
         elif action == "move_safe":
             self._last_move_target = None
@@ -657,18 +674,22 @@ class AgentOrchestrator:
                 block=True
             )
         elif action == "pick":
+            # Get coordinates from step, or fall back to last move target
             pick_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             pick_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
             if pick_x is None or pick_y is None:
                 pick_x, pick_y = self.robot.get_work_position()[0], self.robot.get_work_position()[1]
                 logging.warning("pick() without coordinates or preceding move_to")
 
-            # Lower to pick height at the stored XY
+            # Use the label stored during the preceding move_to (if any)
+            target_label = self._last_move_target_label
+            if target_label and config.robot.enable_gripper_refinement:
+                refined_x, refined_y = self._refine_with_gripper_camera(target_label, pick_x, pick_y)
+                pick_x, pick_y = refined_x, refined_y
+
+            # Lower and pick
             self.robot.move_to_native(pick_x, pick_y, config.robot.pick_z_mm, block=True)
             self.robot.gripper_close()
-            time.sleep(max(0.5, self.robot.gripper_close_duration / 1000.0 + 0.2))
-            # Raise back at the same XY
-            self.robot.move_to_native(pick_x, pick_y, config.robot.safe_z_mm, block=True)
         elif action == "place":
             place_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             place_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
@@ -907,3 +928,105 @@ class AgentOrchestrator:
         elif isinstance(data, list):
             for idx, item in enumerate(data):
                 self._log_workspace_violations(item, store_as, f"{path}[{idx}]")
+
+
+    def _refine_with_gripper_camera(self, label, rough_x, rough_y):
+        """
+        Refine XY using gripper camera with rotation correction.
+        - First try ORB template matching (if we have a template).
+        - If that fails, use VLM on the gripper frame.
+        Returns (refined_x, refined_y) or (rough_x, rough_y) on failure.
+        """
+        if self.gripper_cam.cap is None:
+            logging.warning("Gripper camera not available.")
+            return rough_x, rough_y
+
+        # Move to rough position at safe height so object is in frame
+        self.robot.move_to_native(rough_x, rough_y, config.robot.safe_z_mm, block=True)
+        time.sleep(0.5)
+
+        # --- Get current wrist angle (forearm orientation) ---
+        steps_j1 = self.robot._last_j1
+        steps_j2 = self.robot._last_j2
+        theta1 = math.radians(steps_j1 / STEPS_PER_DEG_J1)
+        theta2 = math.radians(steps_j2 / STEPS_PER_DEG_J2)
+        wrist_angle = theta1 + theta2   # forearm angle (radians)
+
+        # Capture gripper frame
+        scene = self.gripper_cam.get_frame()
+        if scene is None:
+            return rough_x, rough_y
+
+        # 1. Try ORB with a template from the main camera
+        template = self._template_cache.get(label)
+        if template is not None:
+            cx, cy, match_count = self.gripper_cam.locate_template_orb(template, scene)
+            if cx is not None and match_count > 15:
+                # Convert pixel to world offset with rotation correction
+                dx_world, dy_world = self.gripper_cam.pixel_to_world_offset(cx, cy, wrist_angle)
+                refined_x = rough_x + dx_world
+                refined_y = rough_y + dy_world
+                logging.info(f"ORB refinement: '{label}' → offset ({dx_world:.2f}, {dy_world:.2f}) mm, matches={match_count}")
+                self.queue.put({"type": "agent_reasoning", "data": f"🎯 ORB refined '{label}' (matches={match_count})"})
+                return refined_x, refined_y
+            else:
+                logging.info(f"ORB insufficient matches ({match_count}) for '{label}', falling back to VLM.")
+
+        # 2. Fallback to VLM on gripper frame
+        prompt = (
+            f"Find the exact centre of the '{label}' in this close-up image. "
+            "Return ONLY a JSON object: {\"point\": [y, x]} with y,x normalized 0-1000."
+        )
+        result = self.gemini.query_json(scene, prompt)
+        if result and "point" in result:
+            norm_y, norm_x = result["point"]
+            h, w = scene.shape[:2]
+            px_x = (norm_x / 1000.0) * w
+            px_y = (norm_y / 1000.0) * h
+            dx_world, dy_world = self.gripper_cam.pixel_to_world_offset(px_x, px_y, wrist_angle)
+            refined_x = rough_x + dx_world
+            refined_y = rough_y + dy_world
+            logging.info(f"VLM refinement: '{label}' → offset ({dx_world:.2f}, {dy_world:.2f}) mm")
+            self.queue.put({"type": "agent_reasoning", "data": f"👁️ VLM refined '{label}'"})
+            return refined_x, refined_y
+
+        logging.warning(f"Refinement failed for '{label}'.")
+        return rough_x, rough_y
+
+    def calibrate_gripper(self, marker_id=4, marker_size_mm=40.0):
+        """Trigger gripper camera calibration after moving to safe Z."""
+        if not hasattr(self, 'gripper_cam') or self.gripper_cam is None:
+            self.queue.put({"type": "agent_error", "data": "Gripper camera not available"})
+            return
+
+        # --- Move to safe Z (preserving current X,Y) ---
+        current_x, current_y, _ = self.robot.get_work_position()
+        self.robot.move_to_xyz(current_x, current_y, config.robot.safe_z_mm, block=True)
+        time.sleep(0.5)  # let the robot settle
+
+        # --- Now calibrate at this height ---
+        success = self.gripper_cam.calibrate_hand_eye_simple(
+            robot=self.robot,
+            marker_id=marker_id,
+            marker_size_mm=marker_size_mm
+        )
+
+        # --- Update GUI ---
+        if success:
+            self.queue.put({
+                "type": "agent_response",
+                "data": f"Gripper calibration successful at Z={config.robot.safe_z_mm}mm! Offset: {self.gripper_cam.hand_eye_offset} mm, Scale: {self.gripper_cam.scale_mm_per_px:.4f} mm/px"
+            })
+            self.queue.put({
+                "type": "gripper_calib_status",
+                "data": "Calibration successful ✓"
+            })
+        else:
+            self.queue.put({
+                "type": "agent_error",
+                "data": "Gripper calibration failed. Check marker visibility and robot position."
+            })
+            self.queue.put({
+                "type": "gripper_calib_status",
+                "data": "Calibration failed ❌"
+            })

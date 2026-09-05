@@ -147,6 +147,7 @@ class ScaraAgentApp(ctk.CTk):
         right_frame.grid_rowconfigure(0, weight=0)
         right_frame.grid_rowconfigure(1, weight=1)
         right_frame.grid_columnconfigure(0, weight=1)
+ 
 
         # Arm canvas and toggles row
         arm_row = ctk.CTkFrame(right_frame, fg_color="transparent")
@@ -199,7 +200,8 @@ class ScaraAgentApp(ctk.CTk):
         self.calib_panel = ManualCalibPanel(
                     right_frame,
                     robot=self.robot,
-                    camera=self.camera
+                    camera=self.camera,
+                    orchestrator=self.orchestrator
                 )
         self.calib_panel.grid(row=2, column=0, pady=10, sticky="ew")
 
@@ -212,6 +214,8 @@ class ScaraAgentApp(ctk.CTk):
             width=160
         )
         self.open_view_btn.grid(row=3, column=0, pady=5)
+        self.show_gripper_feed = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(toggle_frame, text="Show Gripper Feed", variable=self.show_gripper_feed).pack(anchor="w", pady=2)
 
         # --- Agent panel (bottom) ---
         if AgentPanel:
@@ -436,6 +440,10 @@ class ScaraAgentApp(ctk.CTk):
                     if hasattr(self, 'camera_panel') and self.camera_panel:
                         self.camera_panel.clear_perception_points()
                         self.camera_panel.update_raw_perception(None)
+                elif msg_type == "gripper_calib_status":
+                    if hasattr(self, 'calib_panel'):
+                        self.calib_panel.gripper_calib_status.configure(text=data, text_color="lightgreen" if "successful" in data else "red")
+                        self.calib_panel.calib_gripper_btn.configure(state="normal", text="Calibrate Gripper Camera")
             except Exception as e:
                 logging.error(f"Queue processing error: {e}")
 

@@ -9,8 +9,7 @@ clean up the table by putting the components in the corresponding boxes
 2)
 Let's play tic tac toe. I have the wooden squares, you have the metal nuts. Your turn.
 Let's play tic tac toe. I have the metal nuts, you have the stepper motors. Your turn.
-3)
-Build a tower with these objects.
+3) Build a tower with these objects.
 4) longer horizon tasks
 a) Let's play tic tac toe. I have the wooden squares, you have the metal nuts.
 b) Keep the workspace organized.

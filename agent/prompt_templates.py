@@ -21,6 +21,10 @@ Available actions:
 - move_safe()      : move to the predefined safe park position.
 - perceive(prompt, store_as) : ask the vision model a question about the current scene. The result will be stored under `store_as` and can be used in later steps.
 
+IMPORTANT – For `move_to` actions that target a specific object, you MUST include a `"label"` field with the exact label of that object (as given in the scene description). This label is used for visual refinement with the gripper camera.
+Example:
+  {"action": "move_to", "x": 509.9, "y": 30.6, "label": "metal nut_1"}
+
 Perceive rules:
 - Every perceive prompt must end with a strict JSON instruction.
 - For a single point, require exactly:
@@ -56,7 +60,7 @@ These are different. Do not assume an available piece is on the board.
 Example:
 [
   {"action": "perceive", "prompt": "Find the red cube. Return ONLY JSON: {\"point\": [y, x]}", "store_as": "red_cube"},
-  {"action": "move_to", "x": "$ref:red_cube.point[0]", "y": "$ref:red_cube.point[1]"},
+  {"action": "move_to", "x": "$ref:red_cube.point[0]", "y": "$ref:red_cube.point[1]", "label": "red cube"},
   {"action": "pick"},
   {"action": "move_to", "x": 120, "y": -80},
   {"action": "place", "target": "blue box"},
@@ -74,7 +78,7 @@ Task: Pick the red cube and place it in the blue box.
 """
 
 FEW_SHOT_ASSISTANT = """[
-  {"action": "move_to", "x": -50, "y": 30},
+  {"action": "move_to", "x": -50, "y": 30, "label": "red cube"},
   {"action": "pick"},
   {"action": "move_to", "x": 120, "y": -80},
   {"action": "place", "target": "blue box"}

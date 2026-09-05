@@ -68,11 +68,13 @@ class RobotConfig:
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
-    z_correction_coeffs: tuple = (-51.913628, 0.194194, -0.085585, -0.000153, -0.000061, 0.000114)
+    z_correction_coeffs: tuple = (-68.977513, 0.270916, -0.090421, -0.000234, -0.000050, 0.000139)
+
+    enable_gripper_refinement: bool = False
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = "http://10.194.111.127:8080/video"
+    camera_index: Any = "http://10.86.51.32:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30
@@ -94,6 +96,11 @@ class VisionConfig:
     workspace_x_max: float = 800.0
     workspace_y_min: float = -500.0
     workspace_y_max: float = 200.0
+
+    gripper_camera_scale_mm_per_px: float = 0.0   # will be loaded from calibration
+    gripper_camera_offset_x: float = 0.0
+    gripper_camera_offset_y: float = 0.0
+    show_gripper_feed: bool = False
 
 @dataclass
 class LLMConfig:
