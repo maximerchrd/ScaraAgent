@@ -132,7 +132,8 @@ class AgentOrchestrator:
             H_affine = cv2.getAffineTransform(np.float32(pixel_points), np.float32(robot_points))
             H = np.vstack([H_affine, [0, 0, 1]])
         else:
-            H, _ = cv2.findHomography(np.float32(pixel_points), np.float32(robot_points), cv2.RANSAC, 3.0)
+            #H, _ = cv2.findHomography(np.float32(pixel_points), np.float32(robot_points), cv2.RANSAC, 3.0)
+            H, _ = cv2.findHomography(np.float32(pixel_points), np.float32(robot_points), 0)
 
         if H is None:
             logging.warning("Homography computation failed.")
@@ -240,6 +241,31 @@ class AgentOrchestrator:
             self._last_homography = H
             self._last_frame_shape = (h_img, w_img)
 
+            debug_points = []
+            for fp in self.robot.pixel_calib.fixed_points:
+                robot_x = float(fp["robot_x"])
+                robot_y = float(fp["robot_y"])
+                robot_pt = np.array([[[robot_x, robot_y]]], dtype=np.float32)
+                try:
+                    pixel_pt = cv2.perspectiveTransform(robot_pt, np.linalg.inv(H))
+                    px, py = float(pixel_pt[0][0][0]), float(pixel_pt[0][0][1])
+
+                    # Normalise to 0-1000 to match the overlay convention
+                    px_norm = (px / w_img) * 1000.0
+                    py_norm = (py / h_img) * 1000.0
+
+                    debug_points.append({
+                        "point": [py_norm, px_norm],
+                        "label": f"{fp['marker_id']};{fp['corner_index']}"
+                    })
+                except np.linalg.LinAlgError:
+                    logging.warning("Homography is singular, cannot invert for debug overlay.")
+                    break
+
+            self.queue.put({"type": "clear_perception_overlay", "data": None})
+            self.queue.put({"type": "perception_overlay", "data": debug_points})
+            logging.info(f"Debug overlay: sending {len(debug_points)} points")
+
             # 3. Iterative VLM‑LLM perception loop
             objects = self.perception.perceive(frame, user_prompt)
 
@@ -249,9 +275,10 @@ class AgentOrchestrator:
                 px_x = int((norm_x / 1000.0) * w_img)
                 px_y = int((norm_y / 1000.0) * h_img)
                 # Store the crop (e.g., 100x100 around the point)
-                crop = self.gripper_cam.get_template_crop(frame, (px_x, px_y, 120, 120))
-                if crop is not None and crop.shape[0] > 20 and crop.shape[1] > 20:
-                    self._template_cache[obj["label"]] = crop
+                if self.gripper_cam is not None:
+                    crop = self.gripper_cam.get_template_crop(frame, (px_x, px_y, 120, 120))
+                    if crop is not None and crop.shape[0] > 20 and crop.shape[1] > 20:
+                        self._template_cache[obj["label"]] = crop
 
             # Send final VLM object list to GUI for overlay
             self.queue.put({"type": "vlm_objects", "data": objects})
@@ -425,8 +452,6 @@ class AgentOrchestrator:
             # 8. Execute actions, re-plan after perceives
             max_replans = 5
             replan_count = 0
-
-            self.queue.put({"type": "clear_perception_overlay", "data": None})
 
             while True:
                 if plan is None:
@@ -679,22 +704,28 @@ class AgentOrchestrator:
                 block=True
             )
         elif action == "pick":
-            # Get coordinates from step, or fall back to last move target
             pick_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             pick_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
             if pick_x is None or pick_y is None:
                 pick_x, pick_y = self.robot.get_work_position()[0], self.robot.get_work_position()[1]
                 logging.warning("pick() without coordinates or preceding move_to")
 
-            # Use the label stored during the preceding move_to (if any)
             target_label = self._last_move_target_label
             if target_label and config.robot.enable_gripper_refinement:
                 refined_x, refined_y = self._refine_with_gripper_camera(target_label, pick_x, pick_y)
                 pick_x, pick_y = refined_x, refined_y
 
-            # Lower and pick
+            # 1. Descend to pick height (XY already there from preceding move_to)
             self.robot.move_to_native(pick_x, pick_y, config.robot.pick_z_mm, block=True)
+            time.sleep(0.3)   # let the descent settle before closing
+
+            # 2. Close gripper and WAIT for it to finish
             self.robot.gripper_close()
+            time.sleep(config.robot.gripper_close_duration / 1000.0 + 0.3)
+
+            # 3. Retract Z FIRST (pure vertical), still at the pick XY
+            self.robot.move_to_native(pick_x, pick_y, config.robot.safe_z_mm, block=True)
+            time.sleep(0.2)
         elif action == "place":
             place_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             place_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
@@ -704,24 +735,27 @@ class AgentOrchestrator:
 
             orig_x, orig_y = place_x, place_y
 
-            target_label = step.get("target", "the target")
-            if self._is_container(target_label):
-                refined_x, refined_y = self._refine_placement(
-                    target_label, place_x, place_y
-                )
-                if refined_x is not None and refined_y is not None:
-                    place_x, place_y = refined_x, refined_y
-                    logging.info(f"📍 Placement shift for '{target_label}': "
-                                f"Δx={place_x - orig_x:.1f}mm, Δy={place_y - orig_y:.1f}mm")
-                else:
-                    logging.info(f"⚠️  Refinement failed for '{target_label}' — using original coordinates")
+            # target_label = step.get("target", "the target")
+            # if self._is_container(target_label):
+            #     refined_x, refined_y = self._refine_placement(target_label, place_x, place_y)
+            #     if refined_x is not None and refined_y is not None:
+            #         place_x, place_y = refined_x, refined_y
+            #         logging.info(f"📍 Placement shift for '{target_label}': "
+            #                     f"Δx={place_x - orig_x:.1f}mm, Δy={place_y - orig_y:.1f}mm")
+            #     else:
+            #         logging.info(f"⚠️  Refinement failed for '{target_label}' — using original coordinates")
 
+            # 1. Descend to place height
             self.robot.move_to_native(place_x, place_y, config.robot.place_z_mm, block=True)
+            time.sleep(0.3)
+
+            # 2. Open gripper and WAIT for it to finish
             self.robot.gripper_open()
-            time.sleep(max(0.5, self.robot.gripper_open_duration / 1000.0 + 0.2))
+            time.sleep(max(0.5, self.robot.gripper_open_duration / 1000.0 + 0.3))
+
+            # 3. Retract Z FIRST (pure vertical), still at the place XY
             self.robot.move_to_native(place_x, place_y, config.robot.safe_z_mm, block=True)
-        else:
-            logging.warning(f"Unknown action: {action}")
+            time.sleep(0.2)
 
     def _resolve_references(self, plan):
         """
@@ -942,7 +976,7 @@ class AgentOrchestrator:
         - If that fails, use VLM on the gripper frame.
         Returns (refined_x, refined_y) or (rough_x, rough_y) on failure.
         """
-        if self.gripper_cam.cap is None:
+        if self.gripper_cam.cap is None or self.gripper_cam is None:
             logging.warning("Gripper camera not available.")
             return rough_x, rough_y
 

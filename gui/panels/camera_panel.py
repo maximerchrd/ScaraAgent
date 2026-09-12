@@ -175,7 +175,7 @@ class CameraPanel(ctk.CTkFrame):
             cv2.circle(frame, (px_x, px_y), 10, (255, 0, 255), 2)
             cv2.circle(frame, (px_x, px_y), 2, (255, 255, 255), -1)
             cv2.putText(frame, label, (px_x + 12, px_y - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 255), 2)
 
     def update_raw_perception(self, data):
         """Store the raw VLM response for overlay."""

@@ -63,8 +63,8 @@ class RobotConfig:
     park_z_mm: float = 10.0
 
     safe_z_mm: float = 60.0      # travel height (clears all objects)
-    pick_z_mm: float = -3.0      # height for picking
-    place_z_mm: float = 10.0    # height for releasing
+    pick_z_mm: float = -8.0      # height for picking
+    place_z_mm: float = 30.0    # height for releasing
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
@@ -115,7 +115,7 @@ class LLMConfig:
     chatgpt_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
 
     # Model for the perception critic (cheaper, fast)
-    critic_model: str = "llama-3.3-70b-versatile"
+    critic_model: str = "qwen/qwen3.8-27b"
     planner_model: str = "openai/gpt-oss-120b"
     skill_decision_model: str = "openai/gpt-oss-20b"
 
