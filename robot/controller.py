@@ -46,6 +46,12 @@ class RobotController:
         self._last_yaw = 90
         self._last_distance = None   # distance sensor mm
 
+        self.current_speed = config.robot.default_speed
+
+    def set_speed(self, speed):
+        self.current_speed = int(speed)
+        self.send_raw(f"SPEED {int(speed)}")
+
     # ---------- Connection helpers ----------
     def connect(self, port):
         self.serial_comm.connect(port)
@@ -126,9 +132,14 @@ class RobotController:
         self.send_raw(cmd)
 
         if block:
-            # Estimate move time (crude: 1 second per 1000 steps)
-            distance = abs(steps_z - self._last_z) + abs(steps_j1 - self._last_j1) + abs(steps_j2 - self._last_j2)
-            wait_time = distance / 1000.0 + 0.5
+            max_axis_distance = max(
+                abs(steps_z - self._last_z),
+                abs(steps_j1 - self._last_j1),
+                abs(steps_j2 - self._last_j2),
+            )
+            # Convert steps to seconds using the current command speed.
+            # Add a small margin for acceleration and serial latency.
+            wait_time = max_axis_distance / max(self.current_speed, 1) + 0.3
             time.sleep(wait_time)
 
     def move_joints(self, z_steps, j1_steps, j2_steps, yaw=None):
@@ -217,6 +228,12 @@ class RobotController:
         self.send_raw(cmd)
 
         if block:
-            distance = abs(steps_z - self._last_z) + abs(steps_j1 - self._last_j1) + abs(steps_j2 - self._last_j2)
-            wait_time = distance / 1000.0 + 0.5
+            max_axis_distance = max(
+                abs(steps_z - self._last_z),
+                abs(steps_j1 - self._last_j1),
+                abs(steps_j2 - self._last_j2),
+            )
+            # Convert steps to seconds using the current command speed.
+            # Add a small margin for acceleration and serial latency.
+            wait_time = max_axis_distance / max(self.current_speed, 1) + 0.3
             time.sleep(wait_time)

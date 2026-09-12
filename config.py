@@ -50,8 +50,8 @@ class RobotConfig:
     # Jog defaults
     jog_step_linear: int = 50         # steps for Z, J1, J2 discrete jog
     jog_step_yaw: int = 5             # degrees for wrist yaw
-    max_speed: int = 2000
-    default_speed: int = 1000
+    max_speed: int = 3000
+    default_speed: int = 2000
 
     # Gripper timings (ms)
     gripper_open_duration: int = 1500

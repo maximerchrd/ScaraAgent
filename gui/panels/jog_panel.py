@@ -16,7 +16,7 @@ class JogPanel(ctk.CTkFrame):
 
         # Speed slider
         ctk.CTkLabel(self, text="Max Speed (Steps/sec)").pack()
-        self.speed_slider = ctk.CTkSlider(self, from_=100, to=2000, command=self._on_speed_change)
+        self.speed_slider = ctk.CTkSlider(self, from_=100, to=3000, command=self._on_speed_change)
         self.speed_slider.set(1000)
         self.speed_slider.pack(pady=5)
 
