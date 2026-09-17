@@ -55,6 +55,17 @@ class StatusPanel(ctk.CTkFrame):
         )
         self.distance_label.pack(pady=5)
 
+        self.distance_label.pack(pady=5)
+
+        # Pitch (IMU) label — sits next to distance
+        self.pitch_label = ctk.CTkLabel(
+            self,
+            text="Pitch: -- °",
+            font=("Courier New", 14, "bold"),
+            text_color="#2ECC71"
+        )
+        self.pitch_label.pack(pady=5)
+
         # Individual axes
         self.pos_frame = ctk.CTkFrame(self, fg_color="#1E272C")
         self.pos_frame.pack(pady=5, fill="x", padx=20)
@@ -271,6 +282,15 @@ class StatusPanel(ctk.CTkFrame):
             self.distance_label.configure(text="Distance: -- mm")
         else:
             self.distance_label.configure(text=f"Distance: {distance_mm:.1f} mm")
+
+    def update_pitch(self, pitch_deg):
+        if pitch_deg is None:
+            self.pitch_label.configure(text="Pitch: -- °", text_color="gray")
+        else:
+            self.pitch_label.configure(
+                text=f"Pitch: {pitch_deg:+.2f} °",
+                text_color="#2ECC71"
+            )
 
     def set_xyz(self, x, y, z):
         self.xyz_label.configure(text=f"X: {x:.1f} mm   Y: {y:.1f} mm   Z: {z:.1f} mm")

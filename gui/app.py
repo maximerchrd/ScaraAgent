@@ -99,6 +99,7 @@ class ScaraAgentApp(ctk.CTk):
         self.camera = camera
         self.orchestrator = orchestrator
         self.calibrator = calibrator
+        self.current_pitch = None
 
         self.title("SCARA Agent Control Dashboard")
         self.geometry("1450x850")
@@ -467,15 +468,27 @@ class ScaraAgentApp(ctk.CTk):
                 distance_mm = None
         self.current_distance = distance_mm
 
+        # Read IMU pitch if present (field 6, may be "nan")
+        pitch_deg = None
+        if len(data) > 5:
+            try:
+                v = float(data[5])
+                pitch_deg = (v - config.robot.pitch_offset) if v == v else None
+            except (ValueError, TypeError):
+                pitch_deg = None
+        self.current_pitch = pitch_deg
+
         if self.robot:
             self.robot._last_z = steps_z
             self.robot._last_j1 = steps_j1
             self.robot._last_j2 = steps_j2
             self.robot._last_yaw = self.current_yaw
             self.robot._last_distance = distance_mm
+            self.robot._last_pitch = pitch_deg
 
         self.status_panel.update_positions(steps_z, steps_j1, steps_j2, self.current_yaw)
-        self.status_panel.update_distance(distance_mm)   # <-- show distance
+        self.status_panel.update_distance(distance_mm)
+        self.status_panel.update_pitch(pitch_deg)
 
         self.last_steps = (steps_z, steps_j1, steps_j2)
         self.arm_canvas.update_joints(steps_j1, steps_j2)

@@ -45,6 +45,7 @@ class RobotController:
 
         self._last_yaw = 90
         self._last_distance = None   # distance sensor mm
+        self._last_pitch = None      # IMU pitch (deg), None if not present
 
         self.current_speed = config.robot.default_speed
 
@@ -95,6 +96,16 @@ class RobotController:
                             self._last_distance = float(data[4])
                         except (ValueError, TypeError):
                             self._last_distance = None
+                    if len(data) > 5:
+                        try:
+                            v = float(data[5])
+                            # reject NaN ("nan" parses to float('nan'))
+                            if v == v:
+                                self._last_pitch = v - config.robot.pitch_offset
+                            else:
+                                self._last_pitch = None
+                        except (ValueError, TypeError):
+                            self._last_pitch = None
             except Exception as e:
                 # Ignore empty queue or key errors
                 pass
@@ -206,6 +217,9 @@ class RobotController:
 
     def get_distance_mm(self):
         return self._last_distance
+
+    def get_pitch_deg(self):
+        return self._last_pitch
 
     def move_to_native(self, x_native, y_native, z_mm, use_z_correction=True, block=False):
         """

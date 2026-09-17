@@ -53,6 +53,8 @@ class RobotConfig:
     max_speed: int = 3000
     default_speed: int = 2000
 
+    pitch_offset:float = 6.15
+
     # Gripper timings (ms)
     gripper_open_duration: int = 1500
     gripper_close_duration: int = 800
