@@ -181,7 +181,7 @@ class StatusPanel(ctk.CTkFrame):
             logging.info(f"Probing point {i+1}: X={x} Y={y}")
 
             # Move to (x,y) at safe height (no correction)
-            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True, pitch_deg=0.0)
             time.sleep(0.5)
 
             # ---- Phase 1: Coarse approach ----
@@ -190,7 +190,7 @@ class StatusPanel(ctk.CTkFrame):
             dist = None
 
             while current_z > Z_LIMIT:
-                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True)
+                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True, pitch_deg=0.0)
                 time.sleep(SETTLE_COARSE)
 
                 dist = self.robot.get_distance_mm()
@@ -210,7 +210,7 @@ class StatusPanel(ctk.CTkFrame):
                 logging.warning(f"  No contact at point ({x}, {y}) – skipped")
                 self.z_calib_status.configure(text=f"⚠️ Point {i+1} no contact", text_color="orange")
                 # Return to safe height
-                self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+                self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True, pitch_deg=0.0)
                 time.sleep(0.3)
                 continue
 
@@ -223,7 +223,7 @@ class StatusPanel(ctk.CTkFrame):
 
             # Now step down finely until we cross target again
             while current_z > Z_LIMIT:
-                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True)
+                self.robot.move_to_xyz(x, y, current_z, use_z_correction=False, block=True, pitch_deg=0.0)
                 time.sleep(SETTLE_FINE)
 
                 dist = self.robot.get_distance_mm()
@@ -241,7 +241,7 @@ class StatusPanel(ctk.CTkFrame):
                 current_z -= FINE_STEP
 
             # Return to safe height
-            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True)
+            self.robot.move_to_xyz(x, y, Z_CALIBRATION_SAFE_Z, use_z_correction=False, block=True, pitch_deg=0.0)
             time.sleep(0.3)
 
         self.z_calib_status.configure(text=f"Collected {len(data)} points", text_color="lightgreen")

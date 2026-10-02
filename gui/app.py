@@ -4,6 +4,7 @@ Main application window.
 Arranges panels, sets up keyboard bindings, and processes the shared queue.
 """
 
+import math
 import tkinter as tk
 import customtkinter as ctk
 import logging
@@ -473,7 +474,7 @@ class ScaraAgentApp(ctk.CTk):
         if len(data) > 5:
             try:
                 v = float(data[5])
-                pitch_deg = (v - config.robot.pitch_offset) if v == v else None
+                pitch_deg = (v - config.robot.pitch_vertical_deg) if v == v else None
             except (ValueError, TypeError):
                 pitch_deg = None
         self.current_pitch = pitch_deg
@@ -494,7 +495,9 @@ class ScaraAgentApp(ctk.CTk):
         self.arm_canvas.update_joints(steps_j1, steps_j2)
 
         try:
-            x_native, y_native, z_native = joints_to_xyz(steps_z, steps_j1, steps_j2)
+            pitch_rad = math.radians(self.current_pitch) if self.current_pitch is not None else 0.0
+            x_native, y_native, z_native = joints_to_xyz(
+                steps_z, steps_j1, steps_j2, pitch_rad)
             if self.robot and self.robot.has_zero:
                 zero_mm = self.robot.zero_mm
                 x_work = x_native - zero_mm[0]

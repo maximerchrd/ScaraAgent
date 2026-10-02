@@ -707,54 +707,53 @@ class AgentOrchestrator:
             pick_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             pick_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
             if pick_x is None or pick_y is None:
-                pick_x, pick_y = self.robot.get_work_position()[0], self.robot.get_work_position()[1]
-                logging.warning("pick() without coordinates or preceding move_to")
+                pick_x, pick_y = self.robot.get_work_position()[:2]
+                logging.warning("pick() without coordinates — using current XY")
 
-            target_label = self._last_move_target_label
-            if target_label and config.robot.enable_gripper_refinement:
-                refined_x, refined_y = self._refine_with_gripper_camera(target_label, pick_x, pick_y)
-                pick_x, pick_y = refined_x, refined_y
+            pitch_deg, pick_z, _ = self._resolve_mode(step)
 
-            # 1. Descend to pick height (XY already there from preceding move_to)
-            self.robot.move_to_native(pick_x, pick_y, config.robot.pick_z_mm, block=True)
-            time.sleep(0.3)   # let the descent settle before closing
+            # 1. Set pitch, then restore XY at SAFE height.
+            #    This may move J1/J2, but it happens before the Z move.
+            self.robot.set_pitch(pitch_deg)
+            self.robot.move_to_native(pick_x, pick_y, config.robot.safe_z_mm,
+                                    pitch_deg=pitch_deg, block=True)
+            time.sleep(0.2)
 
-            # 2. Close gripper and WAIT for it to finish
+            # 2. Pure Z down — no J1/J2 command, so XY stays fixed.
+            self.robot.move_z(pick_z, block=True)
+            time.sleep(0.3)
+
+            # 3. Close gripper only after Z has finished.
             self.robot.gripper_close()
             time.sleep(config.robot.gripper_close_duration / 1000.0 + 0.3)
 
-            # 3. Retract Z FIRST (pure vertical), still at the pick XY
-            self.robot.move_to_native(pick_x, pick_y, config.robot.safe_z_mm, block=True)
+            # 4. Pure Z up — no J1/J2 command.
+            self.robot.move_z(config.robot.safe_z_mm, block=True)
             time.sleep(0.2)
         elif action == "place":
             place_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
             place_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
             if place_x is None or place_y is None:
-                place_x, place_y = self.robot.get_work_position()[0], self.robot.get_work_position()[1]
-                logging.warning("place() without coordinates or preceding move_to")
+                place_x, place_y = self.robot.get_work_position()[:2]
 
-            orig_x, orig_y = place_x, place_y
+            pitch_deg, _, place_z = self._resolve_mode(step)
 
-            # target_label = step.get("target", "the target")
-            # if self._is_container(target_label):
-            #     refined_x, refined_y = self._refine_placement(target_label, place_x, place_y)
-            #     if refined_x is not None and refined_y is not None:
-            #         place_x, place_y = refined_x, refined_y
-            #         logging.info(f"📍 Placement shift for '{target_label}': "
-            #                     f"Δx={place_x - orig_x:.1f}mm, Δy={place_y - orig_y:.1f}mm")
-            #     else:
-            #         logging.info(f"⚠️  Refinement failed for '{target_label}' — using original coordinates")
+            # 1. Set pitch, restore XY at safe height.
+            self.robot.set_pitch(pitch_deg)
+            self.robot.move_to_native(place_x, place_y, config.robot.safe_z_mm,
+                                    pitch_deg=pitch_deg, block=True)
+            time.sleep(0.2)
 
-            # 1. Descend to place height
-            self.robot.move_to_native(place_x, place_y, config.robot.place_z_mm, block=True)
+            # 2. Pure Z down.
+            self.robot.move_z(place_z, block=True)
             time.sleep(0.3)
 
-            # 2. Open gripper and WAIT for it to finish
+            # 3. Open gripper only after Z has finished.
             self.robot.gripper_open()
-            time.sleep(max(0.5, self.robot.gripper_open_duration / 1000.0 + 0.3))
+            time.sleep(max(0.5, config.robot.gripper_open_duration / 1000.0 + 0.3))
 
-            # 3. Retract Z FIRST (pure vertical), still at the place XY
-            self.robot.move_to_native(place_x, place_y, config.robot.safe_z_mm, block=True)
+            # 4. Pure Z up.
+            self.robot.move_z(config.robot.safe_z_mm, block=True)
             time.sleep(0.2)
 
     def _resolve_references(self, plan):
@@ -1069,3 +1068,14 @@ class AgentOrchestrator:
                 "type": "gripper_calib_status",
                 "data": "Calibration failed ❌"
             })
+
+    def _resolve_mode(self, step):
+        mode = step.get("mode", "top")
+        logging.info(f"_resolve_mode: step_mode={mode!r}  raw_step={step}")
+        if mode == "side":
+            return (config.robot.pitch_side_deg,
+                    config.robot.pick_z_side_mm,
+                    config.robot.place_z_side_mm)
+        return (config.robot.pitch_top_deg,
+                config.robot.pick_z_top_mm,
+                config.robot.place_z_top_mm)

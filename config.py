@@ -35,7 +35,7 @@ class RobotConfig:
     # Kinematics (mm & steps)
     link1_length: float = 325.5       # upper arm length (mm)
     link2_length: float = 327.5       # forearm length (mm)
-    steps_per_deg_j1: float = 139.31
+    steps_per_deg_j1: float = 172.08
     steps_per_deg_j2: float = 63.83
     z_steps_per_mm: float = 200.218
 
@@ -53,7 +53,8 @@ class RobotConfig:
     max_speed: int = 3000
     default_speed: int = 2000
 
-    pitch_offset:float = 6.15
+    pitch_vertical_deg:float = -5.5
+    gripper_length_mm: float = 170.0
 
     # Gripper timings (ms)
     gripper_open_duration: int = 1500
@@ -65,8 +66,17 @@ class RobotConfig:
     park_z_mm: float = 10.0
 
     safe_z_mm: float = 60.0      # travel height (clears all objects)
-    pick_z_mm: float = -8.0      # height for picking
-    place_z_mm: float = 30.0    # height for releasing
+
+
+    #Grab Modes
+    pitch_top_deg:   float = 0.0     # vertical — pinch from above
+    pitch_side_deg:  float = 65.0    # horizontal — grab from the side
+
+    pick_z_top_mm: float = -10.0      # height for picking
+    pick_z_side_mm:  float = -110.0
+
+    place_z_top_mm: float = 30.0    # height for releasing
+    place_z_side_mm: float = -80.0
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y

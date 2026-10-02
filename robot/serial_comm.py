@@ -57,18 +57,47 @@ class SerialComm:
             logging.warning(f"Not connected – command ignored: {cmd}")
 
     def _read_loop(self):
-        """Continuously read lines from serial and push to queue."""
-        while self._running and self.is_connected():
+        while self._running:
             try:
+                if not self.is_connected():
+                    # try to reopen
+                    logging.warning("Serial disconnected, attempting reconnect...")
+                    if not self._try_reconnect():
+                        time.sleep(1.0)
+                        continue
+
                 if self.ser.in_waiting > 0:
                     line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         self._parse_line(line)
-            except serial.SerialException:
-                break
+
+            except serial.SerialException as e:
+                logging.error(f"Serial exception: {e} — will retry")
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+                self.ser = None
+                time.sleep(0.5)
+
             except Exception as e:
                 logging.error(f"Serial read error: {e}")
-            time.sleep(0.01)
+                time.sleep(0.1)
+
+            time.sleep(0.005)
+
+    def _try_reconnect(self):
+        try:
+            self.ser = serial.Serial(self.port, self.baudrate,
+                                    timeout=self.timeout, dsrdtr=False)
+            time.sleep(1.5)                     # let the Arduino settle
+            self.ser.reset_input_buffer()
+            self._last_pos_time = time.time()
+            logging.info(f"Serial reconnected on {self.port}")
+            return True
+        except Exception as e:
+            logging.warning(f"Reconnect failed: {e}")
+            return False
 
     def _parse_line(self, line):
         """Parse known feedback lines and put a message dict into the queue."""

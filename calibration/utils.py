@@ -65,7 +65,7 @@ def collect_calibration_data(robot, camera, grid_points,
 
         logging.info(f"Point {i+1}/{total}: marker ({xm:.0f},{ym:.0f}) → TCP ({xtcp:.0f},{ytcp:.0f})")
 
-        robot.move_to_xyz(xtcp, ytcp, gz, block=True)
+        robot.move_to_xyz(xtcp, ytcp, gz, block=True, pitch_deg=0.0)
         time.sleep(settle_time)
 
         detected = False
@@ -155,7 +155,7 @@ def collect_calibration_data_multi_marker(
         logging.info(f"Point {i+1}/{total}: TCP ({x_tcp:.0f}, {y_tcp:.0f})")
 
         # Move TCP directly to grid point
-        robot.move_to_xyz(x_tcp, y_tcp, z_tcp, block=True)
+        robot.move_to_xyz(x_tcp, y_tcp, z_tcp, block=True, pitch_deg=0.0)
         time.sleep(settle_time)
 
         # Compute joint angles for forearm direction (using commanded TCP)
