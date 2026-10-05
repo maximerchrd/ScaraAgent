@@ -53,7 +53,7 @@ class RobotConfig:
     max_speed: int = 3000
     default_speed: int = 2000
 
-    pitch_vertical_deg:float = -5.5
+    pitch_vertical_deg:float = -9.15
     gripper_length_mm: float = 170.0
 
     # Gripper timings (ms)
@@ -70,7 +70,7 @@ class RobotConfig:
 
     #Grab Modes
     pitch_top_deg:   float = 0.0     # vertical — pinch from above
-    pitch_side_deg:  float = 65.0    # horizontal — grab from the side
+    pitch_side_deg:  float = 70.0    # horizontal — grab from the side
 
     pick_z_top_mm: float = -10.0      # height for picking
     pick_z_side_mm:  float = -110.0
