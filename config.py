@@ -54,14 +54,14 @@ class RobotConfig:
     default_speed: int = 2000
 
     pitch_vertical_deg:float = -9.15
-    gripper_length_mm: float = 170.0
+    gripper_length_mm: float = 150.0
 
     # Gripper timings (ms)
     gripper_open_duration: int = 1500
     gripper_close_duration: int = 800
 
     # Safe park position in work coordinates (used when no object found)
-    park_x_mm: float = 300.0
+    park_x_mm: float = 420.0
     park_y_mm: float = -460.0
     park_z_mm: float = 10.0
 
@@ -72,11 +72,15 @@ class RobotConfig:
     pitch_top_deg:   float = 0.0     # vertical — pinch from above
     pitch_side_deg:  float = 70.0    # horizontal — grab from the side
 
-    pick_z_top_mm: float = -10.0      # height for picking
+    pick_z_top_mm: float = -6.0      # height for picking
     pick_z_side_mm:  float = -110.0
 
-    place_z_top_mm: float = 30.0    # height for releasing
+    place_z_top_mm: float = 10.0    # height for releasing
     place_z_side_mm: float = -80.0
+
+    pour_pitch_deg: float = -40.0      # angle to tilt for pouring
+    pour_duration: float = 2.5         # seconds to hold pour angle
+    pour_z_mm: float = 70.0           # height above table during pour
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
@@ -118,7 +122,7 @@ class VisionConfig:
 class LLMConfig:
     # Gemini VLM models
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-3.5-flash-lite"
     #gemini_model: str = "gemini-robotics-er-1.6-preview"
 
     # Groq (ChatGPT-OSS 120B)

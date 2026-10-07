@@ -30,6 +30,9 @@ Available actions:
 - perceive(prompt, store_as) : ask the vision model a question about the current scene.
                                The result is stored under `store_as` and can be used in
                                later steps.
+- pour() : tilt the currently held container to pour its contents into
+           whatever is directly beneath the gripper. Use only after picking
+           a cup/bottle/jar/etc with mode="side". No arguments.
 
 Mode rules:
 - Use "side" for objects with a body to wrap fingers around:

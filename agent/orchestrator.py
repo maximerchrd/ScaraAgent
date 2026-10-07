@@ -755,6 +755,44 @@ class AgentOrchestrator:
             # 4. Pure Z up.
             self.robot.move_z(config.robot.safe_z_mm, block=True)
             time.sleep(0.2)
+        elif action == "pour":
+            pour_x = step.get("x", self._last_move_target[0] if self._last_move_target else None)
+            pour_y = step.get("y", self._last_move_target[1] if self._last_move_target else None)
+            if pour_x is None or pour_y is None:
+                pour_x, pour_y = self.robot.get_work_position()[:2]
+
+            hold_pitch = config.robot.pitch_side_deg   # object stays upright
+            pour_pitch = config.robot.pour_pitch_deg
+            safe_z     = config.robot.safe_z_mm
+            N          = 20                            # interpolation steps
+
+            # 1. Move OVER the target at the holding pitch — nothing tilts yet.
+            self.robot.move_to_native(pour_x, pour_y, safe_z,
+                                    pitch_deg=hold_pitch, block=True)
+            time.sleep(0.3)
+
+            # 2. Tilt in increments, re-commanding J1/J2 so the tip stays on target.
+            for i in range(1, N + 1):
+                p = hold_pitch + (pour_pitch - hold_pitch) * i / N
+                self.robot.set_pitch(p, timeout=1.0)
+                self.robot.move_to_native(pour_x, pour_y, safe_z,
+                                        pitch_deg=p, block=True)
+                time.sleep(0.05)
+
+            # 3. Lower to the pour height, hold.
+            self.robot.move_z(config.robot.pour_z_mm, block=True)
+            time.sleep(config.robot.pour_duration)
+
+            # 4. Raise back to safe height first, THEN untilt (same interleave),
+            #    so the returning swing doesn't drag the container across the table.
+            self.robot.move_z(safe_z, block=True)
+            time.sleep(0.2)
+            for i in range(1, N + 1):
+                p = pour_pitch + (hold_pitch - pour_pitch) * i / N
+                self.robot.set_pitch(p, timeout=1.0)
+                self.robot.move_to_native(pour_x, pour_y, safe_z,
+                                        pitch_deg=p, block=True)
+                time.sleep(0.05)
 
     def _resolve_references(self, plan):
         """

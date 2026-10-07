@@ -6,9 +6,11 @@ Launches the GUI, starts optional robot/vision/agent threads, and runs the main 
 Test prompts:
 1)
 clean up the table by putting the components in the corresponding boxes
+the white box is for paper, the red box is for plastic. Clean up the table.
 2)
-Let's play tic tac toe. I have the wooden squares, you have the metal nuts. Your turn.
-Let's play tic tac toe. I have the metal nuts, you have the stepper motors. Your turn.
+Let's play tic tac toe. I have the metal washers, you have the metal nuts. Your turn.
+Let's play tic tac toe. I have the dark red chips, you have the metal nuts. Your turn.
+Let's play tic tac toe. I have the metal washers, you have the stepper motors. Your turn.
 3) Build a tower with these objects.
 4) longer horizon tasks
 a) Let's play tic tac toe. I have the wooden squares, you have the metal nuts.
