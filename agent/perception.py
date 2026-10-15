@@ -165,17 +165,30 @@ class PerceptionManager:
         logging.info(f"Using fallback question: {question}")
         return {"sufficient": False, "question": question}
 
-    def _merge_objects(self, existing, new, pixel_threshold=40):
+    def _merge_objects(self, existing, new, tight_threshold=25, loose_threshold=40):
         """
         Merge two lists of detected objects.
 
-        Objects are merged only when they are likely the same physical object:
-        - labels are semantically compatible
-        - distance is below pixel_threshold
+        Two-tier distance-based merging:
+        - Very close objects (< tight_threshold) are merged unconditionally.
+        Rationale: two detections at nearly the same position are the same
+        physical object, regardless of what the VLM called them. This is
+        the common case when the initial scan labels an object "tissue" and
+        a critic-loop follow-up labels the same object "paper items".
+        - Moderately close objects (< loose_threshold) are merged only if
+        their labels are semantically compatible. This preserves the
+        original conservative behavior for objects that could plausibly be
+        adjacent distinct items.
 
-        Different labels are never merged, even if they are close.
+        When merging, the FIRST label is kept (existing list wins), because
+        the initial scan runs before any task-specific prompt and is thus
+        less likely to be biased toward a requested category.
+
+        This prevents the same physical object from appearing twice in the
+        scene with different labels.
         """
         import re
+        import logging
 
         merged = existing.copy()
 
@@ -188,47 +201,34 @@ class PerceptionManager:
         def labels_compatible(a, b):
             na = normalize_label(a)
             nb = normalize_label(b)
-
             if not na or not nb:
                 return False
-
             if na == nb:
                 return True
-
             ta = set(na.split())
             tb = set(nb.split())
-
-            # If one is contained in the other, require high overlap.
             smaller, larger = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
             if smaller and smaller.issubset(larger):
                 return len(smaller) / len(larger) >= 0.66
-
-            # Otherwise use token overlap.
             intersection = ta & tb
             if not intersection:
                 return False
-
             jaccard = len(intersection) / len(ta | tb)
             return jaccard >= 0.7
 
         for new_obj in new:
             new_pt = new_obj.get("point")
             new_label = new_obj.get("label", "")
-
             if not new_pt:
                 continue
 
             best_idx = None
-            best_dist = pixel_threshold
+            best_dist = float("inf")
 
             for i, ex_obj in enumerate(merged):
                 ex_pt = ex_obj.get("point")
                 ex_label = ex_obj.get("label", "")
-
                 if not ex_pt:
-                    continue
-
-                if not labels_compatible(new_label, ex_label):
                     continue
 
                 dist = (
@@ -236,17 +236,30 @@ class PerceptionManager:
                     (new_pt[1] - ex_pt[1]) ** 2
                 ) ** 0.5
 
-                if dist < best_dist:
+                # Two-tier acceptance:
+                # - very close: merge regardless of labels
+                # - moderately close: merge only if labels are compatible
+                if dist < tight_threshold:
+                    accept = True
+                elif dist < loose_threshold and labels_compatible(new_label, ex_label):
+                    accept = True
+                else:
+                    accept = False
+
+                if accept and dist < best_dist:
                     best_dist = dist
                     best_idx = i
 
             if best_idx is not None:
-                # Keep the more descriptive label if possible.
+                # Keep the existing (older) label — it comes from an earlier,
+                # less task-biased scan.
                 old_label = merged[best_idx].get("label", "")
-                if len(normalize_label(old_label).split()) > len(normalize_label(new_label).split()):
-                    new_obj["label"] = old_label
-
                 merged[best_idx] = new_obj
+                merged[best_idx]["label"] = old_label
+                logging.debug(
+                    f"Merged '{new_label}' into '{old_label}' "
+                    f"(dist={best_dist:.1f})"
+                )
             else:
                 merged.append(new_obj)
 

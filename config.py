@@ -72,10 +72,10 @@ class RobotConfig:
     pitch_top_deg:   float = 0.0     # vertical — pinch from above
     pitch_side_deg:  float = 70.0    # horizontal — grab from the side
 
-    pick_z_top_mm: float = -6.0      # height for picking
-    pick_z_side_mm:  float = -110.0
+    pick_z_top_mm: float = 0.0      # height for picking
+    pick_z_side_mm:  float = -30.0
 
-    place_z_top_mm: float = 10.0    # height for releasing
+    place_z_top_mm: float = 30.0    # height for releasing
     place_z_side_mm: float = -80.0
 
     pour_pitch_deg: float = -40.0      # angle to tilt for pouring
@@ -84,13 +84,13 @@ class RobotConfig:
 
     # Z sag correction coefficients (2nd order polynomial)
     # Z = a + b*X + c*Y + d*X^2 + e*Y^2 + f*X*Y
-    z_correction_coeffs: tuple = (-68.977513, 0.270916, -0.090421, -0.000234, -0.000050, 0.000139)
+    z_correction_coeffs: tuple = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     enable_gripper_refinement: bool = False
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = "http://10.86.51.32:8080/video"
+    camera_index: Any = "http://172.20.10.13:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30
