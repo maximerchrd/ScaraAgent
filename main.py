@@ -11,11 +11,22 @@ the white box is for paper, the red box is for plastic. Clean up the table.
 Let's play tic tac toe. I have the metal washers, you have the metal nuts. Your turn.
 Let's play tic tac toe. I have the dark red chips, you have the metal nuts. Your turn.
 Let's play tic tac toe. I have the metal washers, you have the stepper motors. Your turn.
-3) Build a tower with these objects.
-4) longer horizon tasks
+3) Check the endstate and auto correct.
+4) Build a tower with these objects.
+5) longer horizon tasks
 a) Let's play tic tac toe. I have the wooden squares, you have the metal nuts.
 b) Keep the workspace organized.
 c) Sort the objects by weight. 
+
+6) Not agentic, but interesting: precision through visual and force feedback (peg in a hole with <1mm tolerance)
+
+TODO
+1) Evaluate precision without camera (repeatability). (draw a square)
+2) Solve the servo vibration issue. mostly OK
+3) Add wrist yaw axis.
+4) Reliably clean up a table.
+5) Check end state and self correct.
+6) Longer horizon tasks.
 """
 
 import sys

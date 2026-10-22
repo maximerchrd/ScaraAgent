@@ -33,25 +33,25 @@ class RobotConfig:
     serial_timeout: float = 0.05
 
     # Kinematics (mm & steps)
-    link1_length: float = 325.5       # upper arm length (mm)
-    link2_length: float = 327.5       # forearm length (mm)
-    steps_per_deg_j1: float = 172.08
-    steps_per_deg_j2: float = 63.83
-    z_steps_per_mm: float = 200.218
+    link1_length: float = 475       # upper arm length (mm)
+    link2_length: float = 275       # forearm length (mm)
+    steps_per_deg_j1: float = 177.78
+    steps_per_deg_j2: float = -133.33
+    z_steps_per_mm: float = 320
 
     # Default joint limits
     j1_min: float = -150.0
     j1_max: float = 150.0
-    j2_min: float = -150.0
-    j2_max: float = 150.0
+    j2_min: float = -170.0
+    j2_max: float = 170.0
     z_min: float = -50.0
     z_max: float = 50.0
 
     # Jog defaults
     jog_step_linear: int = 50         # steps for Z, J1, J2 discrete jog
     jog_step_yaw: int = 5             # degrees for wrist yaw
-    max_speed: int = 3000
-    default_speed: int = 2000
+    max_speed: int = 20000
+    default_speed: int = 3000
 
     pitch_vertical_deg:float = -9.15
     gripper_length_mm: float = 150.0

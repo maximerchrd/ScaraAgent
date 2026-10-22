@@ -399,11 +399,11 @@ class ScaraAgentApp(ctk.CTk):
                     self.status_panel.set_homing_status("complete")
                     if self.robot:
                         self.robot.reset_zero()
-                        self.robot.move_to_xyz(
-                            config.robot.park_x_mm,
-                            config.robot.park_y_mm,
-                            config.robot.park_z_mm
-                        )
+                        # self.robot.move_to_xyz(
+                        #     config.robot.park_x_mm,
+                        #     config.robot.park_y_mm,
+                        #     config.robot.park_z_mm
+                        # )
                 elif msg_type == "robot_homing_aborted":
                     self.status_panel.set_homing_status("aborted")
                 elif msg_type == "robot_estop":
