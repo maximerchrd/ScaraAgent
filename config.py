@@ -36,16 +36,17 @@ class RobotConfig:
     link1_length: float = 475       # upper arm length (mm)
     link2_length: float = 275       # forearm length (mm)
     steps_per_deg_j1: float = 177.78
-    steps_per_deg_j2: float = -133.33
+    steps_per_deg_j2: float = 133.33
     z_steps_per_mm: float = 320
 
     # Default joint limits
-    j1_min: float = -150.0
-    j1_max: float = 150.0
-    j2_min: float = -170.0
-    j2_max: float = 170.0
-    z_min: float = -50.0
-    z_max: float = 50.0
+    j1_min: float = -420.0     # physical -60°   (front-side extreme)
+    j1_max: float =  -93.0     # physical +267°  (2° short of switch, park at -93.8° is inside)
+
+    j2_min: float = -120.0     # your stated physical limit
+    j2_max: float =  175.0     # your stated physical limit (was 170)
+    z_min: float = -10.0
+    z_max: float = 350.0
 
     # Jog defaults
     jog_step_linear: int = 50         # steps for Z, J1, J2 discrete jog
@@ -72,7 +73,7 @@ class RobotConfig:
     pitch_top_deg:   float = 0.0     # vertical — pinch from above
     pitch_side_deg:  float = 70.0    # horizontal — grab from the side
 
-    pick_z_top_mm: float = 0.0      # height for picking
+    pick_z_top_mm: float = -1.0      # height for picking
     pick_z_side_mm:  float = -30.0
 
     place_z_top_mm: float = 30.0    # height for releasing
@@ -90,7 +91,7 @@ class RobotConfig:
 
 @dataclass
 class VisionConfig:
-    camera_index: Any = "http://172.20.10.13:8080/video"
+    camera_index: Any = "http://10.86.51.32:8080/video"
     frame_width: int = 1280
     frame_height: int = 720
     fps: int = 30

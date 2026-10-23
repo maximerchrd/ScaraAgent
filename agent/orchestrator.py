@@ -26,6 +26,10 @@ from robot.kinematics import STEPS_PER_DEG_J1, STEPS_PER_DEG_J2
 
 
 class AgentOrchestrator:
+    _TEST_KEYWORDS = {
+            "test square", "draw square",
+        }
+    
     def __init__(self, robot, camera, queue, agent_queue, gemini_api_key=None,
                  chatgpt_endpoint=None, calibrator=None):
         self.robot = robot
@@ -219,6 +223,10 @@ class AgentOrchestrator:
     def _process_task(self, user_prompt):
         """Full pipeline: see → describe → reason → act."""
         try:
+            # ---- TEST MODE: no AI, deterministic path ----
+            if self._handle_test_command(user_prompt):
+                return
+            # ---------------------------------------------
             # 1. Capture current frame from camera
             frame = None
             if self.camera:
@@ -1117,3 +1125,85 @@ class AgentOrchestrator:
         return (config.robot.pitch_top_deg,
                 config.robot.pick_z_top_mm,
                 config.robot.place_z_top_mm)
+
+
+    # ------------------------------------------------------------------
+    # Deterministic test routines (bypass the LLM entirely)
+    # ------------------------------------------------------------------
+
+    def _handle_test_command(self, prompt: str) -> bool:
+        """If `prompt` is a test keyword, run the test and return True.
+        Returns False otherwise (so normal agent flow continues)."""
+        if prompt.strip().lower() not in self._TEST_KEYWORDS:
+            return False
+
+        self.queue.put({"type": "agent_reasoning",
+                        "data": "🧪 Test mode: drawing 5 squares (no AI)"})
+        self._run_repeatability_square(repeats=5)
+        self.queue.put({"type": "agent_response",
+                        "data": "Repeatability test finished."})
+        return True
+
+
+    def _run_repeatability_square(self, repeats=5,
+                                cx=550.0, cy=10.0,
+                                size=120.0,
+                                z_safe=20.0,
+                                z_draw=-2.0,
+                                speed=None):
+        """
+        Draw a square `repeats` times along the same path.
+        All coordinates are in the work frame (same as the status-panel XYZ).
+
+        Tune:
+        cx, cy   — centre of the square (must be reachable)
+        size     — side length in mm
+        z_safe   — travel height above the table (mm)
+        z_draw   — drawing height above the table (mm).
+                    0 = table surface. Use a small positive value (e.g. 1-2 mm)
+                    if your drawing tool has a spring-loaded tip, or a small
+                    negative value if you need slight pressure.
+        speed    — robot speed in steps/sec; None = keep current setting
+        """
+
+        if speed is not None:
+            self.robot.set_speed(speed)
+
+        half = size / 2.0
+        # Corners traced CCW starting from the bottom-left
+        corners = [
+            (cx - half, cy - half),
+            (cx + half, cy - half),
+            (cx + half, cy + half),
+            (cx - half, cy + half),
+        ]
+
+        logging.info(f"Repeatability test: {repeats} squares at "
+                    f"({cx},{cy}) size={size} z_draw={z_draw} z_safe={z_safe}")
+
+        # 1. Rise to safe height at the current XY, then travel to start corner.
+        self.robot.move_z(z_safe, block=True)
+        time.sleep(0.2)
+        self.robot.move_to_native(corners[0][0], corners[0][1], z_safe, block=True)
+        time.sleep(0.2)
+
+        for i in range(repeats):
+            for j, (x, y) in enumerate(corners):
+                # 1. Travel to the corner at safe height
+                self.robot.move_to_native(x, y, z_safe, block=True)
+                time.sleep(0.1)
+
+                # 2. Dip — pure Z, XY fixed by move_z's no-op A/B
+                self.robot.move_z(z_draw, block=True)
+                time.sleep(0.15)          # dwell so the pen marks
+
+                # 3. Rise — pure Z, XY fixed
+                self.robot.move_z(z_safe, block=True)
+                time.sleep(0.1)
+
+            self.queue.put({"type": "agent_reasoning",
+                            "data": f"✅ Square {i+1}/{repeats} done"})
+            logging.info(f"Square {i+1}/{repeats} complete")
+
+        # 3. Park at safe height at the start corner
+        self.robot.move_to_native(corners[0][0], corners[0][1], z_safe, block=True)
