@@ -62,9 +62,9 @@ class RobotConfig:
     gripper_close_duration: int = 800
 
     # Safe park position in work coordinates (used when no object found)
-    park_x_mm: float = 420.0
-    park_y_mm: float = -460.0
-    park_z_mm: float = 10.0
+    park_x_mm: float = 560.0
+    park_y_mm: float = -480.0
+    park_z_mm: float = 40.0
 
     safe_z_mm: float = 60.0      # travel height (clears all objects)
 

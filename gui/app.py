@@ -178,6 +178,20 @@ class ScaraAgentApp(ctk.CTk):
         chk_calib = ctk.CTkCheckBox(toggle_frame, text="Show Calibrated", variable=self.show_calibrated)
         chk_calib.pack(side="left", padx=5)
 
+        self.crop_mode_var = ctk.BooleanVar(value=False)
+        self.crop_mode_chk = ctk.CTkCheckBox(
+            toggle_frame, text="Crop VLM",
+            variable=self.crop_mode_var,
+            command=self._toggle_crop_mode
+        )
+        self.crop_mode_chk.pack(side="left", padx=5)
+
+        self.clear_crop_btn = ctk.CTkButton(
+            toggle_frame, text="Clear Crop", width=90,
+            command=self._clear_crop
+        )
+        self.clear_crop_btn.pack(side="left", padx=5)
+
         # Marker calibration button (original)
         #self.calib_btn = ctk.CTkButton(toggle_frame, text="Recalibrate", width=100,
         #                               command=self._start_calibration)
@@ -200,7 +214,8 @@ class ScaraAgentApp(ctk.CTk):
             show_aruco_var=self.show_aruco,
             show_vlm_var=self.show_vlm,
             calibrator=self.calibrator,
-            show_calibrated_var=self.show_calibrated
+            show_calibrated_var=self.show_calibrated,
+            on_crop_changed=self._on_crop_changed
         )
         self.camera_panel.grid(row=1, column=0, sticky="nsew")
 
@@ -234,6 +249,21 @@ class ScaraAgentApp(ctk.CTk):
         # Clean exit
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    def _toggle_crop_mode(self):
+        """Enable/disable the crop rectangle drawing mode on the camera panel."""
+        self.camera_panel.crop_mode = self.crop_mode_var.get()
+
+    def _clear_crop(self):
+        """Remove any active crop and notify the orchestrator."""
+        self.camera_panel.crop_rect = None
+        self.camera_panel._emit_crop()
+
+    def _on_crop_changed(self, crop_norm):
+        """Callback from CameraPanel: forward crop change to the orchestrator.
+        crop_norm is (nx0, ny0, nx1, ny1) in [0,1] of full frame, or None for 'no crop'.
+        """
+        self.agent_queue.put({"type": "set_crop", "data": crop_norm})
+        
     # ---------- Marker calibration (unchanged) ----------
     def _start_calibration(self):
         if not self.calibrator:

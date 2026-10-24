@@ -2,6 +2,7 @@
 """Camera panel that displays the live webcam feed with ArUco, VLM, and calibrated marker overlays."""
 
 import customtkinter as ctk
+import tkinter as tk
 from PIL import Image, ImageTk
 import cv2
 import logging
@@ -12,7 +13,7 @@ from vision.image_utils import draw_markers, resize_frame
 
 
 class CameraPanel(ctk.CTkFrame):
-    def __init__(self, parent, camera=None, queue=None, width=640, height=480,
+    def __init__(self, parent, camera=None, queue=None, on_crop_changed=None, width=640, height=480,
                  show_aruco_var=None, show_vlm_var=None,
                  calibrator=None, show_calibrated_var=None):
         super().__init__(parent)
@@ -28,6 +29,8 @@ class CameraPanel(ctk.CTkFrame):
         self.show_vlm = show_vlm_var or ctk.BooleanVar(value=True)
         self.show_calibrated_var = show_calibrated_var or ctk.BooleanVar(value=True)
         self.calibrator = calibrator
+        self.on_crop_changed = on_crop_changed
+        
 
         # Store latest VLM objects
         self.vlm_objects = []
@@ -35,9 +38,28 @@ class CameraPanel(ctk.CTkFrame):
         # Title
         ctk.CTkLabel(self, text="Camera Feed", font=("Arial", 14, "bold")).pack(pady=(5, 0))
 
-        # Video label
-        self.video_label = ctk.CTkLabel(self, text="Waiting for camera...", width=width, height=height)
-        self.video_label.pack(padx=10, pady=5)
+        # Video canvas (replaces the old CTkLabel)
+        self.canvas = tk.Canvas(
+            self, width=width, height=height,
+            highlightthickness=0, bg="black"
+        )
+        self.canvas.pack(padx=10, pady=5)
+        self.canvas.create_text(
+            width // 2, height // 2,
+            text="Waiting for camera...", fill="white"
+        )
+
+        # Crop state
+        self.crop_rect   = None     # canvas coords (x0, y0, x1, y1) or None
+        self.crop_mode   = False    # editing mode on/off
+        self.drag_mode   = None     # None | "draw" | "move" | "resize"
+        self.drag_handle = None     # "tl" | "tr" | "bl" | "br"
+        self.drag_start  = None     # (cx, cy, rect_at_start)
+
+        # Mouse bindings
+        self.canvas.bind("<ButtonPress-1>",   self._on_mouse_down)
+        self.canvas.bind("<B1-Motion>",       self._on_mouse_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
 
         # Status line
         self.status_label = ctk.CTkLabel(self, text="No frame", text_color="gray")
@@ -50,6 +72,16 @@ class CameraPanel(ctk.CTkFrame):
 
         # Start polling
         self._poll_frame()
+
+    def _emit_crop(self):
+        if self.on_crop_changed is None:
+            return
+        if self.crop_rect is None:
+            self.on_crop_changed(None)
+        else:
+            x0, y0, x1, y1 = self.crop_rect
+            W, H = self.display_width, self.display_height
+            self.on_crop_changed((x0 / W, y0 / H, x1 / W, y1 / H))
 
     def update_vlm_objects(self, objects):
         """Receive list of dicts: {"point": [y_norm, x_norm], "label": ...} from VLM."""
@@ -111,8 +143,13 @@ class CameraPanel(ctk.CTkFrame):
             img = Image.fromarray(rgb)
             imgtk = ImageTk.PhotoImage(image=img)
 
-            self.video_label.configure(image=imgtk, text="")
-            self.video_label.image = imgtk
+            # Draw to canvas
+            self.canvas.delete("all")
+            self.canvas.create_image(0, 0, anchor="nw", image=imgtk)
+            self.canvas.image = imgtk    # keep reference
+
+            # Redraw crop overlay on top
+            self._redraw_canvas()
 
             self.status_label.configure(text=" | ".join(status_parts) if status_parts else "No frame")
 
@@ -225,3 +262,122 @@ class CameraPanel(ctk.CTkFrame):
                     label = prefix[-12:] if prefix else "pt"
                     cv2.putText(frame, label, (px_x + 12, px_y - 8),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+
+
+    def _which_handle(self, x, y, rect, tol=10):
+        x0, y0, x1, y1 = rect
+        for name, (hx, hy) in {
+            "tl": (x0, y0), "tr": (x1, y0),
+            "bl": (x0, y1), "br": (x1, y1),
+        }.items():
+            if abs(x - hx) <= tol and abs(y - hy) <= tol:
+                return name
+        return None
+
+    def _on_mouse_down(self, event):
+        if not self.crop_mode:
+            return
+        x, y = event.x, event.y
+        if self.crop_rect:
+            handle = self._which_handle(x, y, self.crop_rect)
+            if handle:
+                self.drag_mode = "resize"
+                self.drag_handle = handle
+                self.drag_start = (x, y, self.crop_rect)
+                return
+            x0, y0, x1, y1 = self.crop_rect
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                self.drag_mode = "move"
+                self.drag_start = (x, y, self.crop_rect)
+                return
+        # Fresh draw
+        self.drag_mode = "draw"
+        self.crop_rect = (x, y, x, y)
+        self.drag_start = (x, y, None)
+
+    def _on_mouse_drag(self, event):
+        if self.drag_mode is None:
+            return
+        W, H = self.display_width, self.display_height
+        x = max(0, min(W, event.x))
+        y = max(0, min(H, event.y))
+
+        if self.drag_mode == "draw":
+            sx, sy, _ = self.drag_start
+            self.crop_rect = (min(sx, x), min(sy, y), max(sx, x), max(sy, y))
+
+        elif self.drag_mode == "move":
+            sx, sy, old = self.drag_start
+            ox0, oy0, ox1, oy1 = old
+            w, h = ox1 - ox0, oy1 - oy0
+            nx0 = max(0, min(W - w, ox0 + (x - sx)))
+            ny0 = max(0, min(H - h, oy0 + (y - sy)))
+            self.crop_rect = (nx0, ny0, nx0 + w, ny0 + h)
+
+        elif self.drag_mode == "resize":
+            ox0, oy0, ox1, oy1 = self.crop_rect
+            if self.drag_handle == "tl": ox0, oy0 = x, y
+            elif self.drag_handle == "tr": ox1, oy0 = x, y
+            elif self.drag_handle == "bl": ox0, oy1 = x, y
+            elif self.drag_handle == "br": ox1, oy1 = x, y
+            self.crop_rect = (min(ox0, ox1), min(oy0, oy1),
+                              max(ox0, ox1), max(oy0, oy1))
+
+        self._redraw_canvas()
+
+    def _on_mouse_up(self, event):
+        if self.drag_mode is None:
+            return
+        if self.crop_rect:
+            x0, y0, x1, y1 = self.crop_rect
+            if (x1 - x0) < 30 or (y1 - y0) < 30:
+                self.crop_rect = None   # discard tiny rectangles
+        self.drag_mode = None
+        self.drag_handle = None
+        self._emit_crop()
+
+    def _redraw_canvas(self):
+        """Redraw the crop overlay on top of the current frame image.
+        Cheap: deletes only rect/handle items, keeps the image."""
+        self.canvas.delete("crop")
+        W, H = self.display_width, self.display_height
+        if self.crop_rect is None:
+            if self.crop_mode:
+                self.canvas.create_text(
+                    W // 2, 20,
+                    text="Click + drag to set crop",
+                    fill="cyan", font=("Arial", 12, "bold"),
+                    tags="crop",
+                )
+            return
+        x0, y0, x1, y1 = self.crop_rect
+
+        # Dim outside crop
+        for r in [(0, 0, W, y0), (0, y1, W, H),
+                  (0, y0, x0, y1), (x1, y0, W, y1)]:
+            self.canvas.create_rectangle(
+                *r, fill="black", stipple="gray50", outline="", tags="crop"
+            )
+
+        # Crop rectangle
+        self.canvas.create_rectangle(x0, y0, x1, y1,
+                                     outline="cyan", width=2, tags="crop")
+
+        # Corner handles (only in edit mode)
+        if self.crop_mode:
+            for hx, hy in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)]:
+                self.canvas.create_rectangle(
+                    hx - 6, hy - 6, hx + 6, hy + 6,
+                    fill="cyan", outline="white", tags="crop"
+                )
+
+    def _emit_crop(self):
+        if self.on_crop_changed is None:
+            return
+        rect = getattr(self, "crop_rect", None)   # safe even if not initialized
+        if rect is None:
+            self.on_crop_changed(None)
+        else:
+            x0, y0, x1, y1 = rect
+            W, H = self.display_width, self.display_height
+            self.on_crop_changed((x0 / W, y0 / H, x1 / W, y1 / H))

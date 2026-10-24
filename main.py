@@ -24,7 +24,7 @@ TODO
 1) Evaluate precision without camera (repeatability). (draw a square)
 2) Solve the servo vibration issue. mostly OK
 3) Add wrist yaw axis.
-4) Reliably clean up a table.
+4) Reliably clean up a table. ->  This gripper struggles taking wrappers.
 5) Check end state and self correct.
 6) Longer horizon tasks.
 """

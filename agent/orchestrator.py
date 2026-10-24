@@ -54,6 +54,10 @@ class AgentOrchestrator:
         self._last_homography = None
         self._last_frame_shape = None
 
+        self._crop_norm = None        # (nx0, ny0, nx1, ny1) in [0,1] of full frame
+        self._last_full_shape = None  # (h_full, w_full), for converting to GUI coords
+        self._last_crop_px = None     # (x0, y0, cw, ch) of the last crop in full-frame pixels
+
         if config.robot.enable_gripper_refinement:
             self.gripper_cam = GripperCamera()
         else:
@@ -75,13 +79,16 @@ class AgentOrchestrator:
             self.thread.join(timeout=2)
 
     def _run_loop(self):
-        """Listen for user prompts from the queue."""
         while self.running:
             if not self.agent_queue.empty():
                 msg = self.agent_queue.get_nowait()
                 if msg.get("type") == "agent_prompt":
-                    user_prompt = msg["data"]
-                    self._process_task(user_prompt)
+                    self._process_task(msg["data"])
+                elif msg.get("type") == "set_crop":
+                    self._crop_norm = msg["data"]     # None = no crop
+                    logging.info(f"Crop set: {self._crop_norm}")
+                    self.queue.put({"type": "agent_reasoning",
+                                    "data": f"🔲 Crop updated: {self._crop_norm}"})
             time.sleep(0.5)
 
     def submit_task(self, user_prompt):
@@ -152,7 +159,8 @@ class AgentOrchestrator:
         Returns (refined_x_mm, refined_y_mm) or (None, None) on failure.
         """
         # Capture a fresh frame
-        frame = self.camera.get_latest_frame() if self.camera else None
+        full = self.camera.get_latest_frame() if self.camera else None
+        frame, mp_crop_px = self._get_cropped_frame(full)
         if frame is None:
             return None, None
 
@@ -161,6 +169,7 @@ class AgentOrchestrator:
         if H is None:
             logging.warning("No homography available for refinement")
             return None, None
+        H, (h_img, w_img) = result
 
         prompt = (
             "You are helping a SCARA robot place an object accurately.\n"
@@ -192,10 +201,16 @@ class AgentOrchestrator:
             x_mm, y_mm = pt_world[0], pt_world[1]
 
             # Place a marker on the camera feed for visual feedback
+            if mp_crop_px is not None:
+                cx0, cy0, _, _ = mp_crop_px
+                marker_x = px_x + cx0
+                marker_y = px_y + cy0
+            else:
+                marker_x, marker_y = px_x, px_y
             if self.queue:
                 self.queue.put({
                     "type": "placement_marker",
-                    "data": {"pixel": [px_x, px_y], "label": f"drop {target_label}"}
+                    "data": {"pixel": [marker_x, marker_y], "label": f"drop {target_label}"}
                 })
 
             # Workspace bounds check
@@ -228,51 +243,49 @@ class AgentOrchestrator:
                 return
             # ---------------------------------------------
             # 1. Capture current frame from camera
-            frame = None
-            if self.camera:
-                frame = self.camera.get_latest_frame()
-            if frame is None:
+            # Full frame from camera (only the GUI needs to see all of it)
+            full_frame = self.camera.get_latest_frame() if self.camera else None
+            if full_frame is None:
                 logging.warning("No camera frame available for scene description.")
                 self.queue.put({"type": "agent_error", "data": "No camera frame"})
                 return
+            h_full, w_full = full_frame.shape[:2]
+            self._last_full_shape = (h_full, w_full)
 
-            h_img, w_img = frame.shape[:2]
+            # Apply crop — everything downstream uses `frame`, not `full_frame`
+            frame, crop_px = self._get_cropped_frame(full_frame)
+            self._last_crop_px = crop_px
+            h_img, w_img = frame.shape[:2]   # ← now the CROP shape
 
-            # 2. Compute homography from markers in this frame
+            #2 Homography computed on the CROP (markers must be inside the crop)
             result = self._compute_homography_from_frame(frame)
             if result is None or result[0] is None:
-                logging.error("No markers visible in current frame. Cannot proceed.")
-                self.queue.put({"type": "agent_error", "data": "No ArUco markers visible. Check camera and markers."})
+                logging.error("No ArUco markers visible inside crop.")
+                self.queue.put({"type": "agent_error",
+                                "data": "No ArUco markers inside crop region."})
                 return
-
             H, (h_img, w_img) = result
             self._last_homography = H
             self._last_frame_shape = (h_img, w_img)
 
             debug_points = []
             for fp in self.robot.pixel_calib.fixed_points:
-                robot_x = float(fp["robot_x"])
-                robot_y = float(fp["robot_y"])
-                robot_pt = np.array([[[robot_x, robot_y]]], dtype=np.float32)
+                robot_pt = np.array([[[float(fp["robot_x"]), float(fp["robot_y"])]]],
+                                    dtype=np.float32)
                 try:
-                    pixel_pt = cv2.perspectiveTransform(robot_pt, np.linalg.inv(H))
-                    px, py = float(pixel_pt[0][0][0]), float(pixel_pt[0][0][1])
-
-                    # Normalise to 0-1000 to match the overlay convention
-                    px_norm = (px / w_img) * 1000.0
-                    py_norm = (py / h_img) * 1000.0
-
-                    debug_points.append({
-                        "point": [py_norm, px_norm],
-                        "label": f"{fp['marker_id']};{fp['corner_index']}"
-                    })
+                    crop_pt = cv2.perspectiveTransform(robot_pt, np.linalg.inv(H))
+                    cx, cy = float(crop_pt[0][0][0]), float(crop_pt[0][0][1])
+                    if not (0 <= cx < w_img and 0 <= cy < h_img):
+                        continue   # fixed point is outside crop — don't display it
+                    crop_norm = [(cy / h_img) * 1000.0, (cx / w_img) * 1000.0]
+                    full_norm = self._to_full_norm(crop_norm, crop_px)
+                    debug_points.append({"point": full_norm,
+                                        "label": f"{fp['marker_id']};{fp['corner_index']}"})
                 except np.linalg.LinAlgError:
-                    logging.warning("Homography is singular, cannot invert for debug overlay.")
                     break
 
             self.queue.put({"type": "clear_perception_overlay", "data": None})
             self.queue.put({"type": "perception_overlay", "data": debug_points})
-            logging.info(f"Debug overlay: sending {len(debug_points)} points")
 
             # 3. Iterative VLM‑LLM perception loop
             objects = self.perception.perceive(frame, user_prompt)
@@ -289,7 +302,12 @@ class AgentOrchestrator:
                         self._template_cache[obj["label"]] = crop
 
             # Send final VLM object list to GUI for overlay
-            self.queue.put({"type": "vlm_objects", "data": objects})
+            vlm_objects_for_gui = [
+                {"point": self._to_full_norm(obj["point"], crop_px),
+                "label": obj["label"]}
+                for obj in objects
+            ]
+            self.queue.put({"type": "vlm_objects", "data": vlm_objects_for_gui})
 
             located_objects = []
             for obj in objects:
@@ -478,7 +496,8 @@ class AgentOrchestrator:
                             self.queue.put({"type": "agent_error", "data": "Perceive action missing prompt"})
                             return
 
-                        frame = self.camera.get_latest_frame()
+                        full = self.camera.get_latest_frame() if self.camera else None
+                        frame, mp_crop_px = self._get_cropped_frame(full)
                         if frame is None:
                             self.queue.put({"type": "agent_error", "data": "No camera frame for perceive"})
                             return
@@ -496,11 +515,13 @@ class AgentOrchestrator:
                             return
 
                         logging.info(f"Raw perception '{store_as}': {json.dumps(result)}")
-
-                        self.queue.put({"type": "raw_perception", "data": result})
                         
                         # overlay raw perceived points on the camera feed
                         overlay_points = self._extract_perception_points(result, label=store_as)
+                        overlay_full = [{"point": self._to_full_norm(p["point"], mp_crop_px),
+                                        "label": p["label"]} for p in overlay_points]
+
+                        self.queue.put({"type": "raw_perception", "data": overlay_full})
 
                         # Auto-convert any normalised coordinates to world mm
                         result = self._convert_perceived_coordinates(result)
@@ -1207,3 +1228,33 @@ class AgentOrchestrator:
 
         # 3. Park at safe height at the start corner
         self.robot.move_to_native(corners[0][0], corners[0][1], z_safe, block=True)
+
+    def _get_cropped_frame(self, full_frame):
+        """Return (cropped_frame, (x0, y0, cw, ch) in full-frame pixels).
+        Falls back to full frame if no crop or crop is too small."""
+        if full_frame is None:
+            return None, None
+        if self._crop_norm is None:
+            return full_frame, None
+        h, w = full_frame.shape[:2]
+        nx0, ny0, nx1, ny1 = self._crop_norm
+        x0 = max(0, min(w - 1, int(nx0 * w)))
+        y0 = max(0, min(h - 1, int(ny0 * h)))
+        x1 = max(x0 + 1, min(w, int(nx1 * w)))
+        y1 = max(y0 + 1, min(h, int(ny1 * h)))
+        if (x1 - x0) < 40 or (y1 - y0) < 40:
+            return full_frame, None
+        return full_frame[y0:y1, x0:x1], (x0, y0, x1 - x0, y1 - y0)
+
+
+    def _to_full_norm(self, crop_norm_yx, crop_px):
+        """crop-normalized [y,x] in [0,1000] → full-frame-normalized [y,x] in [0,1000].
+        Needed because the GUI draws on the full frame, not the crop."""
+        if crop_px is None or self._last_full_shape is None:
+            return crop_norm_yx
+        ny, nx = crop_norm_yx
+        cx0, cy0, cw, ch = crop_px
+        h_full, w_full = self._last_full_shape
+        full_px_x = cx0 + (nx / 1000.0) * cw
+        full_px_y = cy0 + (ny / 1000.0) * ch
+        return [(full_px_y / h_full) * 1000.0, (full_px_x / w_full) * 1000.0]
