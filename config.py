@@ -73,7 +73,7 @@ class RobotConfig:
     pitch_top_deg:   float = 0.0     # vertical — pinch from above
     pitch_side_deg:  float = 70.0    # horizontal — grab from the side
 
-    pick_z_top_mm: float = -1.0      # height for picking
+    pick_z_top_mm: float = -2.5      # height for picking
     pick_z_side_mm:  float = -30.0
 
     place_z_top_mm: float = 30.0    # height for releasing
@@ -109,10 +109,10 @@ class VisionConfig:
     })
 
     # Workspace bounds for outlier rejection (mm, in robot coordinates)
-    workspace_x_min: float = -200.0
+    workspace_x_min: float = 200.0
     workspace_x_max: float = 800.0
-    workspace_y_min: float = -500.0
-    workspace_y_max: float = 200.0
+    workspace_y_min: float = -350.0
+    workspace_y_max: float = 340.0
 
     gripper_camera_scale_mm_per_px: float = 0.0   # will be loaded from calibration
     gripper_camera_offset_x: float = 0.0

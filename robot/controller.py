@@ -363,6 +363,11 @@ class RobotController:
         raw_target = work_deg + config.robot.pitch_vertical_deg
         self.send_raw(f"PITCH_SET {raw_target:.2f}")
 
+        # No IMU feedback available → don't wait for a report that will never arrive.
+        if self._last_pitch is None:
+            logging.debug(f"set_pitch({work_deg}): no IMU, skipping wait")
+            return True
+
         start = time.time()
         while time.time() - start < timeout:
             if self._last_pitch is not None and abs(self._last_pitch - work_deg) < 3.0:
